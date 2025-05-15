@@ -34,6 +34,7 @@ require (
 )
 
 require (
+	github.com/bwmarrin/snowflake v0.3.0
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/facebookgo/ensure v0.0.0-20200202191622-63f1cf65ac4c // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
