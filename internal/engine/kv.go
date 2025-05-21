@@ -1,4 +1,4 @@
-package byodb
+package engine
 
 import (
 	"bytes"
@@ -19,33 +19,41 @@ type KV struct {
 	fd   int
 	tree BTree
 	free FreeList
+
+	// chunks 中的每个 []byte 就是 操作系统把文件的某个区段通过虚拟内存页映射（mmap）映射到进程虚拟内存空间的结果。
 	mmap struct {
-		total  int      // mmap size, can be larger than the file size
-		chunks [][]byte // multiple mmaps, can be non-continuous
+		total  int      // mmap size, can be larger than the file size, 整个内存映射大小
+		chunks [][]byte // multiple mmaps, can be non-continuous, 存储多个内存映射的块，每个块都是一个字节数组（[]byte）
 	}
 	page struct {
-		flushed uint64            // database size in number of pages
-		nappend uint64            // number of pages to be appended
-		updates map[uint64][]byte // pending updates, including appended pages
+		flushed uint64            // database size in number of pages, 数据库已经写入磁盘并且成功刷新的页数
+		nappend uint64            // number of pages to be appended, 表示即将要追加到数据库中的页面数
+		updates map[uint64][]byte // 页面号 -> 页面数据 的映射，存放所有`正在被修改`或者`准备追加`的页面数据(增加或修改)
 	}
 	failed bool // Did the last update fail?
 }
 
 // `BTree.get`, read a page.
+// 页编号 ptr，在 mmap 的多个内存块中定位出它是哪一块里的第几个页，然后把那一页的数据切出来返回。
 func (db *KV) pageRead(ptr uint64) []byte {
 	assert(ptr < db.page.flushed+db.page.nappend)
 	if node, ok := db.page.updates[ptr]; ok {
+		// 在 updates 中保存了那些已经修改但尚未写入磁盘的页面数据
+		// 如果当前node在updates中,说明在使用但还未写入
 		return node // pending update
 	}
+	// 说明数据已经写入磁盘, 从磁盘加载数据
 	return db.pageReadFile(ptr)
 }
 
 func (db *KV) pageReadFile(ptr uint64) []byte {
 	start := uint64(0)
 	for _, chunk := range db.mmap.chunks {
+		//uint64(len(chunk)) / BTREE_PAGE_SIZE表示这个chunk一共占了多少页
 		end := start + uint64(len(chunk))/BTREE_PAGE_SIZE
 		if ptr < end {
-			offset := BTREE_PAGE_SIZE * (ptr - start)
+			// ptr落在[start, end)内, 这个chunk包含所要的页
+			offset := BTREE_PAGE_SIZE * (ptr - start) //偏移量
 			return chunk[offset : offset+BTREE_PAGE_SIZE]
 		}
 		start = end
@@ -67,10 +75,10 @@ func (db *KV) pageAlloc(node []byte) uint64 {
 // `FreeList.new`, append a new page.
 func (db *KV) pageAppend(node []byte) uint64 {
 	assert(len(node) == BTREE_PAGE_SIZE)
-	ptr := db.page.flushed + db.page.nappend
+	ptr := db.page.flushed + db.page.nappend // 计算新页的页号，是已刷新的页数 + 未刷新的追加页数
 	db.page.nappend++
 	assert(db.page.updates[ptr] == nil)
-	db.page.updates[ptr] = node
+	db.page.updates[ptr] = node // 将页面数据写入更新缓存
 	return ptr
 }
 
@@ -133,13 +141,13 @@ func (db *KV) Open() error {
 	var err error
 	db.page.updates = map[uint64][]byte{}
 	// B+tree callbacks
-	db.tree.get = db.pageRead
-	db.tree.new = db.pageAlloc
-	db.tree.del = db.free.PushTail
+	db.tree.get = db.pageRead      // read a page
+	db.tree.new = db.pageAlloc     // (new) reuse from the free list or append
+	db.tree.del = db.free.PushTail // (new) freed pages go to the free list
 	// free list callbacks
-	db.free.get = db.pageRead
-	db.free.new = db.pageAppend
-	db.free.set = db.pageWrite
+	db.free.get = db.pageRead   // read a page
+	db.free.new = db.pageAppend // append a page
+	db.free.set = db.pageWrite  // (new) in-place updates
 	// open or create the DB file
 	if db.fd, err = createFileSync(db.Path); err != nil {
 		return err
@@ -195,9 +203,12 @@ func saveMeta(db *KV) []byte {
 
 // 读取数据库文件的元页面（meta page）信息，并做一些校验
 func readRoot(db *KV, fileSize int64) error {
+	//确保数据库文件的大小是页面大小的整数倍
 	if fileSize%BTREE_PAGE_SIZE != 0 {
 		return errors.New("file is not a multiple of pages")
 	}
+
+	// 如果页面大小为空, 则预留两个页面, 一个元页面, 一个空闲页面节点
 	if fileSize == 0 { // empty file
 		// reserve 2 pages: the meta page and a free list node
 		db.page.flushed = 2
@@ -206,19 +217,22 @@ func readRoot(db *KV, fileSize int64) error {
 		db.free.tailPage = 1
 		return nil // the meta page will be written in the 1st update
 	}
-	// read the page
+	// read the page, 并加载mmap第一个块, 元数据
 	data := db.mmap.chunks[0]
 	loadMeta(db, data)
+
 	// initialize the free list
+	// SetMaxSeq 将空闲链表的 maxSeq 设置为当前链表的尾部序列号（tailSeq）
+	// 这样新加入的空闲页就会从maxseq开始递增,而不会覆盖或重用现有的页面
 	db.free.SetMaxSeq()
 	// verify the page, 校验元页面是否合法
 	bad := !bytes.Equal([]byte(DB_SIG), data[:16])
 	// pointers are within range?
 	maxpages := uint64(fileSize / BTREE_PAGE_SIZE)
-	bad = bad || !(0 < db.page.flushed && db.page.flushed <= maxpages)
-	bad = bad || !(0 < db.tree.root && db.tree.root < db.page.flushed)
-	bad = bad || !(0 < db.free.headPage && db.free.headPage < db.page.flushed)
-	bad = bad || !(0 < db.free.tailPage && db.free.tailPage < db.page.flushed)
+	bad = bad || !(0 < db.page.flushed && db.page.flushed <= maxpages)         // 已刷新的页面应该大于0, 小于等于最大页面数
+	bad = bad || !(0 < db.tree.root && db.tree.root < db.page.flushed)         // 树的根指针(指向一个page)应该大于0, 小于page.flushed
+	bad = bad || !(0 < db.free.headPage && db.free.headPage < db.page.flushed) // 空闲页的头指针应该大于0, 小于page.flushed
+	bad = bad || !(0 < db.free.tailPage && db.free.tailPage < db.page.flushed) // 空闲页的尾指针应该大于0, 小于page.flushed
 	if bad {
 		return errors.New("bad meta page")
 	}
@@ -341,6 +355,8 @@ func writePages(db *KV) error {
 		return err
 	}
 	// write data pages to the file
+	// 将 updates 中所有的页面数据，逐个写入到磁盘文件中（通过 unix.Pwrite）
+	// 成功写入说明页面已经`落盘`，这些页面就转化为了`flushed`状态。
 	for ptr, node := range db.page.updates {
 		offset := int64(ptr * BTREE_PAGE_SIZE)
 		if _, err := unix.Pwrite(db.fd, node, offset); err != nil {

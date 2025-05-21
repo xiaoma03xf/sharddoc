@@ -1,4 +1,4 @@
-package byodb
+package engine
 
 import (
 	"fmt"
@@ -354,4 +354,37 @@ func TestKVFileSize(t *testing.T) {
 	// add them back
 	fill(3)
 	assert(size == fileSize(c.db.Path))
+}
+
+func TestDataPersistence(t *testing.T) {
+	c := newD()
+	defer c.dispose()
+	fillDataForPersistence(c)
+	checkDataAfterDel(c)
+}
+
+func fillDataForPersistence(c *D) {
+	fill := func(seed int) {
+		for i := 0; i < 200000; i++ {
+			key := fmt.Sprintf("key%d", fmix32(uint32(i)))
+			val := fmt.Sprintf("vvv%010d", fmix32(uint32(seed*2000+i)))
+			c.add(key, val)
+		}
+	}
+	fill(1)
+	fill(2)
+	for i := 0; i < 100000; i++ {
+		key := fmt.Sprintf("key%d", fmix32(uint32(i)))
+		c.del(key)
+	}
+}
+
+func checkDataAfterDel(c *D) {
+	seed := 2
+	for i := 100000; i < 200000; i++ {
+		key := fmt.Sprintf("key%d", fmix32(uint32(i)))
+		val := fmt.Sprintf("vvv%010d", fmix32(uint32(seed*2000+i)))
+		queryAns, found := c.db.Get([]byte(key))
+		assert(string(queryAns) == val && found)
+	}
 }
