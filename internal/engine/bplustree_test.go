@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"sort"
 	"testing"
+	"time"
 	"unsafe"
 
 	is "github.com/stretchr/testify/require"
@@ -251,5 +252,162 @@ func TestBTreeIncLength(t *testing.T) {
 			c.add(string(key), string(val))
 		}
 		c.verify(t)
+	}
+}
+
+// without bisect 一千万数据
+// === RUN   TestBisect
+// Set time: 3m2.245314963s
+// Get time: 25.479808521s
+// Del time: 2m41.160816668s
+
+// with bisect 一千万数据
+// === RUN   TestBisect
+// Set time: 2m47.297635704s
+// Get time: 11.998730957s
+// Del time: 2m29.35970286s
+func TestBisect(t *testing.T) {
+	c := newD()
+	defer c.dispose()
+
+	const n = 100000
+	keys := make([][]byte, n)
+	for i := 0; i < n; i++ {
+		keys[i] = []byte(fmt.Sprintf("%05d", i))
+	}
+
+	// 随机打乱用于后续查询
+	rand.Shuffle(n, func(i, j int) {
+		keys[i], keys[j] = keys[j], keys[i]
+	})
+
+	var _err error
+	// 测试 Set
+	start := time.Now()
+	for i := 0; i < n; i++ {
+		if _err = c.db.Set(keys[i], []byte("val-"+string(keys[i]))); _err != nil {
+			t.Error(_err)
+		}
+
+	}
+	fmt.Println("Set time:", time.Since(start))
+
+	// 测试 Get
+	start = time.Now()
+	for i := 0; i < n; i++ {
+		_, ok := c.db.Get(keys[i])
+		if !ok {
+			t.Error(ok)
+		}
+	}
+	fmt.Println("Get time:", time.Since(start))
+
+	// 测试 Del
+	start = time.Now()
+	for i := 0; i < n; i++ {
+		ok, _ := c.db.Del(keys[i])
+		if !ok {
+			t.Error(ok)
+		}
+	}
+	fmt.Println("Del time:", time.Since(start))
+}
+
+func TestBTreeIter(t *testing.T) {
+	{
+		c := newC()
+		iter := c.tree.SeekLE(nil)
+		is.False(t, iter.Valid())
+	}
+
+	sizes := []int{5, 2500}
+	for _, sz := range sizes {
+		c := newC()
+
+		for i := 0; i < sz; i++ {
+			key := fmt.Sprintf("key%010d", i)
+			val := fmt.Sprintf("vvv%d", fmix32(uint32(-i)))
+			c.add(key, val)
+		}
+		c.verify(t)
+
+		prevk, prevv := []byte(nil), []byte(nil)
+		for i := 0; i < sz; i++ {
+			key := []byte(fmt.Sprintf("key%010d", i))
+			val := []byte(fmt.Sprintf("vvv%d", fmix32(uint32(-i))))
+			// fmt.Println(i, string(key), val)
+
+			iter := c.tree.SeekLE(key)
+			is.True(t, iter.Valid())
+			gotk, gotv := iter.Deref()
+			is.Equal(t, key, gotk)
+			is.Equal(t, val, gotv)
+
+			iter.Prev()
+			if i > 0 {
+				is.True(t, iter.Valid())
+				gotk, gotv := iter.Deref()
+				is.Equal(t, prevk, gotk)
+				is.Equal(t, prevv, gotv)
+			} else {
+				is.False(t, iter.Valid())
+			}
+
+			iter.Next()
+			{
+				is.True(t, iter.Valid())
+				gotk, gotv := iter.Deref()
+				is.Equal(t, key, gotk)
+				is.Equal(t, val, gotv)
+			}
+
+			if i+1 == sz {
+				iter.Next()
+				is.False(t, iter.Valid())
+			}
+
+			prevk, prevv = key, val
+		}
+	}
+}
+func TestBTreeIter_LargeScaleNext(t *testing.T) {
+	is := is.New(t)
+	c := newC()
+
+	sz := 100000
+	// 批量插入10万个key-value
+	for i := 0; i < sz; i++ {
+		key := fmt.Sprintf("key%010d", i)
+		val := fmt.Sprintf("val%d", i)
+		c.add(key, val)
+	}
+	c.verify(t)
+
+	// 测试3万个点（这里每隔3个取一个，约3.3万个）
+	step := 3
+	testCount := 30000
+	for i := testCount; i >= 1; i-- {
+		idx := i * step
+		if idx >= sz-1 {
+			break // 防止越界，最后一个没下一个了
+		}
+		key := []byte(fmt.Sprintf("key%010d", idx))
+		nextKey := []byte(fmt.Sprintf("key%010d", idx+1))
+		val := []byte(fmt.Sprintf("val%d", idx))
+		nextVal := []byte(fmt.Sprintf("val%d", idx+1))
+
+		// SeekLE 找到当前key
+		iter := c.tree.SeekLE(key)
+		is.True(iter.Valid())
+		gotk, gotv := iter.Deref()
+		is.Equal(key, gotk)
+		is.Equal(val, gotv)
+
+		// Next 找到下一个key
+		iter.Next()
+		is.True(iter.Valid())
+		gotk, gotv = iter.Deref()
+		is.Equal(nextKey, gotk)
+		is.Equal(nextVal, gotv)
 	}
 }

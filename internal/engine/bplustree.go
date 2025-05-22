@@ -8,7 +8,7 @@ import (
 
 // node format:
 // | 类型 | 键数量 |   指针数组    |   偏移量数组  |     键值对数据    |
-// | type | nkeys |  pointers  |   offsets  | key-values
+// | type | nkeys |  pointers   |   offsets     | key-values
 // |  2B  |   2B  | nkeys * 8B | nkeys * 2B | ...
 
 // key-value format:
@@ -136,25 +136,22 @@ func assert(cond bool) {
 // 例如：对于键数组 [a, b, d, e, f]
 // 查找c: 返回b的索引(1)，因为b < c < d
 // 查找d: 返回d的索引(2)，因为d = d
-// TODO: bisect
+
 func nodeLookupLE(node BNode, key []byte) uint16 {
-	nkeys := node.nkeys()
-	found := uint16(0)
-	// the first key is a copy from the parent node,
-	// thus it's always less than or equal to the key.
-	for i := uint16(1); i < nkeys; i++ {
+	low, high, found := uint16(1), node.nkeys()-1, uint16(0)
+
+	for low <= high {
+		mid := (low + high) / 2
 		// bytes.Compare 返回比较结果:
 		// 0: 如果两个键相等 (a==b)
 		// -1: 如果第一个键小于第二个键 (a<b)
 		// 1: 如果第一个键大于第二个键 (a>b)
-		cmp := bytes.Compare(node.getKey(i), key)
+		cmp := bytes.Compare(node.getKey(mid), key)
 		if cmp <= 0 {
-			// 找到完全匹配的键，返回其索引
-			found = i
-		}
-		if cmp >= 0 {
-			// 当前键大于目标键，返回前一个位置
-			break
+			found = mid
+			low = mid + 1
+		} else {
+			high = mid - 1
 		}
 	}
 	return found
@@ -521,6 +518,7 @@ func (tree *BTree) Insert(key []byte, val []byte) error {
 	}
 
 	// 2. create the first node
+	// 创建第一个节点的时候会给root和leaf创建一个哨兵值
 	if tree.root == 0 {
 		// create the first node
 		root := BNode(make([]byte, BTREE_PAGE_SIZE))
