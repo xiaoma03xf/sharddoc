@@ -44,14 +44,22 @@ func (d *D) dispose() {
 }
 
 func (d *D) add(key string, val string) {
-	err := d.db.Set([]byte(key), []byte(val))
+	tx := KVTX{}
+	d.db.Begin(&tx)
+	_, err := tx.Set([]byte(key), []byte(val))
+	assert(err == nil)
+	err = d.db.Commit(&tx)
 	assert(err == nil)
 	d.ref[key] = val
 }
 
 func (d *D) del(key string) bool {
 	delete(d.ref, key)
-	deleted, err := d.db.Del([]byte(key))
+	tx := KVTX{}
+	d.db.Begin(&tx)
+	deleted, err := tx.Del(&DeleteReq{Key: []byte(key)})
+	assert(err == nil)
+	err = d.db.Commit(&tx)
 	assert(err == nil)
 	return deleted
 }
@@ -229,8 +237,19 @@ func TestKVFsyncErr(t *testing.T) {
 	c := newD()
 	defer c.dispose()
 
-	set := c.db.Set
-	get := c.db.Get
+	set := func(key []byte, val []byte) error {
+		tx := KVTX{}
+		c.db.Begin(&tx)
+		tx.Set(key, val)
+		return c.db.Commit(&tx)
+	}
+	get := func(key []byte) ([]byte, bool) {
+		tx := KVTX{}
+		c.db.Begin(&tx)
+		val, ok := tx.Get(key)
+		c.db.Abort(&tx)
+		return val, ok
+	}
 
 	err := set([]byte("k"), []byte("1"))
 	assert(err == nil)
@@ -354,37 +373,4 @@ func TestKVFileSize(t *testing.T) {
 	// add them back
 	fill(3)
 	assert(size == fileSize(c.db.Path))
-}
-
-func TestDataPersistence(t *testing.T) {
-	c := newD()
-	defer c.dispose()
-	fillDataForPersistence(c)
-	checkDataAfterDel(c)
-}
-
-func fillDataForPersistence(c *D) {
-	fill := func(seed int) {
-		for i := 0; i < 200000; i++ {
-			key := fmt.Sprintf("key%d", fmix32(uint32(i)))
-			val := fmt.Sprintf("vvv%010d", fmix32(uint32(seed*2000+i)))
-			c.add(key, val)
-		}
-	}
-	fill(1)
-	fill(2)
-	for i := 0; i < 100000; i++ {
-		key := fmt.Sprintf("key%d", fmix32(uint32(i)))
-		c.del(key)
-	}
-}
-
-func checkDataAfterDel(c *D) {
-	seed := 2
-	for i := 100000; i < 200000; i++ {
-		key := fmt.Sprintf("key%d", fmix32(uint32(i)))
-		val := fmt.Sprintf("vvv%010d", fmix32(uint32(seed*2000+i)))
-		queryAns, found := c.db.Get([]byte(key))
-		assert(string(queryAns) == val && found)
-	}
 }

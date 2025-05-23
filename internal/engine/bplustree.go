@@ -356,50 +356,82 @@ func nodeSplit3(old BNode) (uint16, [3]BNode) {
 	return 3, [3]BNode{leftleft, middle, right} // 3 nodes
 }
 
+// update modes
+const (
+	MODE_UPSERT      = 0 // insert or replace
+	MODE_UPDATE_ONLY = 1 // update existing keys
+	MODE_INSERT_ONLY = 2 // only add new keys
+)
+
+type UpdateReq struct {
+	tree *BTree
+	// out
+	Added   bool   // added a new key
+	Updated bool   // added a new key or an old key was changed
+	Old     []byte // the value before the update
+	// in
+	Key  []byte
+	Val  []byte
+	Mode int
+}
+
 // insert a KV into a node, the result might be split.
 // the caller is responsible for deallocating the input node
 // and splitting and allocating result nodes.
-func treeInsert(tree *BTree, node BNode, key []byte, val []byte) BNode {
+func treeInsert(req *UpdateReq, node BNode) BNode {
 	// the result node.
 	// it's allowed to be bigger than 1 page and will be split if so
 	new := BNode(make([]byte, 2*BTREE_PAGE_SIZE))
-
 	// where to insert the key?
-	idx := nodeLookupLE(node, key)
+	idx := nodeLookupLE(node, req.Key)
 	// act depending on the node type
 	switch node.btype() {
 	case BNODE_LEAF:
 		// leaf, node.getKey(idx) <= key
-		if bytes.Equal(key, node.getKey(idx)) {
+		if bytes.Equal(req.Key, node.getKey(idx)) {
 			// found the key, update it.
-			leafUpdate(new, node, idx, key, val)
+			if req.Mode == MODE_INSERT_ONLY {
+				return BNode{}
+			}
+			if bytes.Equal(req.Val, node.getVal(idx)) {
+				return BNode{}
+			}
+			leafUpdate(new, node, idx, req.Key, req.Val)
+			req.Updated = true
+			req.Old = node.getVal(idx)
 		} else {
 			// insert it after the position.
-			leafInsert(new, node, idx+1, key, val)
+			if req.Mode == MODE_UPDATE_ONLY {
+				return BNode{}
+			}
+			leafInsert(new, node, idx+1, req.Key, req.Val)
+			req.Updated = true
+			req.Added = true
 		}
+		return new
 	case BNODE_NODE:
 		// internal node, insert it to a kid node.
-		nodeInsert(tree, new, node, idx, key, val)
+		return nodeInsert(req, new, node, idx)
 	default:
 		panic("bad node!")
 	}
-	return new
 }
 
 // part of the treeInsert(): KV insertion to an internal node
-func nodeInsert(
-	tree *BTree, new BNode, node BNode, idx uint16,
-	key []byte, val []byte,
-) {
+func nodeInsert(req *UpdateReq, new BNode, node BNode, idx uint16) BNode {
 	kptr := node.getPtr(idx)
 	// recursive insertion to the kid node
-	knode := treeInsert(tree, tree.get(kptr), key, val)
+	updated := treeInsert(req, req.tree.get(kptr))
+	if len(updated) == 0 {
+		return BNode{}
+	}
 	// split the result
-	nsplit, split := nodeSplit3(knode)
+	nsplit, split := nodeSplit3(updated)
 	// deallocate the kid node
-	tree.del(kptr)
+	req.tree.del(kptr)
 	// update the kid links
-	nodeReplaceKidN(tree, new, node, idx, split[:nsplit]...)
+	nodeReplaceKidN(req.tree, new, node, idx, split[:nsplit]...)
+	return new
 }
 
 // remove a key from a leaf node
@@ -417,32 +449,42 @@ func nodeMerge(new BNode, left BNode, right BNode) {
 	assert(new.nbytes() <= BTREE_PAGE_SIZE)
 }
 
+type DeleteReq struct {
+	tree *BTree
+	// in
+	Key []byte
+	// out
+	Old []byte
+}
+
 // delete a key from the tree
-func treeDelete(tree *BTree, node BNode, key []byte) BNode {
+func treeDelete(req *DeleteReq, node BNode) BNode {
 	// where to find the key?
-	idx := nodeLookupLE(node, key)
+	idx := nodeLookupLE(node, req.Key)
 	// act depending on the node type
 	switch node.btype() {
 	case BNODE_LEAF:
-		if !bytes.Equal(key, node.getKey(idx)) {
+		if !bytes.Equal(req.Key, node.getKey(idx)) {
 			return BNode{} // not found
 		}
 		// delete the key in the leaf
+		req.Old = node.getVal(idx)
 		new := BNode(make([]byte, BTREE_PAGE_SIZE))
 		leafDelete(new, node, idx)
 		return new
 	case BNODE_NODE:
-		return nodeDelete(tree, node, idx, key)
+		return nodeDelete(req, node, idx)
 	default:
 		panic("bad node!")
 	}
 }
 
 // part of the treeDelete()
-func nodeDelete(tree *BTree, node BNode, idx uint16, key []byte) BNode {
+func nodeDelete(req *DeleteReq, node BNode, idx uint16) BNode {
+	tree := req.tree
 	// recurse into the kid
 	kptr := node.getPtr(idx)
-	updated := treeDelete(tree, tree.get(kptr), key)
+	updated := treeDelete(req, tree.get(kptr))
 	if len(updated) == 0 {
 		return BNode{} // not found
 	}
@@ -511,30 +553,38 @@ func checkLimit(key []byte, val []byte) error {
 }
 
 // the interface
-func (tree *BTree) Insert(key []byte, val []byte) error {
-	// 1. check the length limit imposed by the node format
-	if err := checkLimit(key, val); err != nil {
-		return err // the only way for an update to fail
+func (tree *BTree) Upsert(key []byte, val []byte) (bool, error) {
+	return tree.Update(&UpdateReq{Key: key, Val: val})
+}
+
+func (tree *BTree) Update(req *UpdateReq) (bool, error) {
+	if err := checkLimit(req.Key, req.Val); err != nil {
+		return false, err // the only way for an update to fail
 	}
 
-	// 2. create the first node
-	// 创建第一个节点的时候会给root和leaf创建一个哨兵值
 	if tree.root == 0 {
 		// create the first node
 		root := BNode(make([]byte, BTREE_PAGE_SIZE))
 		root.setHeader(BNODE_LEAF, 2)
 		// a dummy key, this makes the tree cover the whole key space.
 		// thus a lookup can always find a containing node.
+		// 最初创建节点时会带一个哨兵值
 		nodeAppendKV(root, 0, 0, nil, nil)
-		nodeAppendKV(root, 1, 0, key, val)
+		nodeAppendKV(root, 1, 0, req.Key, req.Val)
 		tree.root = tree.new(root)
-		return nil
+		req.Added = true
+		req.Updated = true
+		return true, nil
 	}
-	// 3. insert the key
-	node := treeInsert(tree, tree.get(tree.root), key, val)
 
-	// 4. grow the tree if the root is split
-	nsplit, split := nodeSplit3(node)
+	req.tree = tree
+	updated := treeInsert(req, tree.get(tree.root))
+	if len(updated) == 0 {
+		return false, nil // not updated
+	}
+
+	// replace the root node
+	nsplit, split := nodeSplit3(updated)
 	tree.del(tree.root)
 	if nsplit > 1 {
 		// the root was split, add a new level.
@@ -548,11 +598,10 @@ func (tree *BTree) Insert(key []byte, val []byte) error {
 	} else {
 		tree.root = tree.new(split[0])
 	}
-	return nil
+	return true, nil
 }
-
-func (tree *BTree) Delete(key []byte) (bool, error) {
-	if err := checkLimit(key, nil); err != nil {
+func (tree *BTree) Delete(req *DeleteReq) (bool, error) {
+	if err := checkLimit(req.Key, nil); err != nil {
 		return false, err // the only way for an update to fail
 	}
 
@@ -560,7 +609,8 @@ func (tree *BTree) Delete(key []byte) (bool, error) {
 		return false, nil
 	}
 
-	updated := treeDelete(tree, tree.get(tree.root), key)
+	req.tree = tree
+	updated := treeDelete(req, tree.get(tree.root))
 	if len(updated) == 0 {
 		return false, nil // not found
 	}

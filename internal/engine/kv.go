@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sync"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -19,7 +20,6 @@ type KV struct {
 	fd   int
 	tree BTree
 	free FreeList
-
 	// chunks 中的每个 []byte 就是 操作系统把文件的某个区段通过虚拟内存页映射（mmap）映射到进程虚拟内存空间的结果。
 	mmap struct {
 		total  int      // mmap size, can be larger than the file size, 整个内存映射大小
@@ -31,6 +31,15 @@ type KV struct {
 		updates map[uint64][]byte // 页面号 -> 页面数据 的映射，存放所有`正在被修改`或者`准备追加`的页面数据(增加或修改)
 	}
 	failed bool // Did the last update fail?
+	// concurrent control
+	mutex   sync.Mutex    // serialize TX methods
+	version uint64        // monotonic version number
+	ongoing []uint64      // version numbers of concurrent TXs
+	history []CommittedTX // chanages keys; for detecting conflicts
+}
+type CommittedTX struct {
+	version uint64
+	writes  []KeyRange // sorted
 }
 
 // `BTree.get`, read a page.
@@ -44,6 +53,19 @@ func (db *KV) pageRead(ptr uint64) []byte {
 	}
 	// 说明数据已经写入磁盘, 从磁盘加载数据
 	return db.pageReadFile(ptr)
+}
+
+func mmapRead(ptr uint64, chunks [][]byte) []byte {
+	start := uint64(0)
+	for _, chunk := range chunks {
+		end := start + uint64(len(chunk))/BTREE_PAGE_SIZE
+		if ptr < end {
+			offset := BTREE_PAGE_SIZE * (ptr - start)
+			return chunk[offset : offset+BTREE_PAGE_SIZE]
+		}
+		start = end
+	}
+	panic("bad ptr")
 }
 
 func (db *KV) pageReadFile(ptr uint64) []byte {
@@ -221,10 +243,10 @@ func readRoot(db *KV, fileSize int64) error {
 	data := db.mmap.chunks[0]
 	loadMeta(db, data)
 
-	// initialize the free list
 	// SetMaxSeq 将空闲链表的 maxSeq 设置为当前链表的尾部序列号（tailSeq）
 	// 这样新加入的空闲页就会从maxseq开始递增,而不会覆盖或重用现有的页面
-	db.free.SetMaxSeq()
+	// initialize the free list
+	db.free.SetMaxVer(db.version)
 	// verify the page, 校验元页面是否合法
 	bad := !bytes.Equal([]byte(DB_SIG), data[:16])
 	// pointers are within range?
@@ -311,8 +333,6 @@ func updateFile(db *KV) error {
 	if err := db.Fsync(db.fd); err != nil {
 		return err
 	}
-	// prepare the free list for the next update
-	db.free.SetMaxSeq()
 	return nil
 }
 
@@ -368,26 +388,6 @@ func writePages(db *KV) error {
 	db.page.nappend = 0
 	db.page.updates = map[uint64][]byte{}
 	return nil
-}
-
-// KV interfaces
-func (db *KV) Get(key []byte) ([]byte, bool) {
-	return db.tree.Get(key)
-}
-func (db *KV) Set(key []byte, val []byte) error {
-	meta := saveMeta(db)
-	if err := db.tree.Insert(key, val); err != nil {
-		return err
-	}
-	return updateOrRevert(db, meta)
-}
-func (db *KV) Del(key []byte) (bool, error) {
-	meta := saveMeta(db)
-	if deleted, err := db.tree.Delete(key); !deleted {
-		return false, err
-	}
-	err := updateOrRevert(db, meta)
-	return err == nil, err
 }
 
 // cleanups

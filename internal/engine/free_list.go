@@ -20,7 +20,7 @@ import "encoding/binary"
 type LNode []byte
 
 const FREE_LIST_HEADER = 8
-const FREE_LIST_CAP = (BTREE_PAGE_SIZE - FREE_LIST_HEADER) / 8
+const FREE_LIST_CAP = (BTREE_PAGE_SIZE - FREE_LIST_HEADER) / 16
 
 // getters & setters
 func (node LNode) getNext() uint64 {
@@ -29,14 +29,16 @@ func (node LNode) getNext() uint64 {
 func (node LNode) setNext(next uint64) {
 	binary.LittleEndian.PutUint64(node[0:8], next)
 }
-func (node LNode) getPtr(idx int) uint64 {
-	offset := FREE_LIST_HEADER + 8*idx
-	return binary.LittleEndian.Uint64(node[offset:])
+func (node LNode) getItem(idx int) (uint64, uint64) {
+	offset := FREE_LIST_HEADER + 16*idx
+	return binary.LittleEndian.Uint64(node[offset:]),
+		binary.LittleEndian.Uint64(node[offset+8:])
 }
-func (node LNode) setPtr(idx int, ptr uint64) {
+func (node LNode) setItem(idx int, ptr uint64, version uint64) {
 	assert(idx < FREE_LIST_CAP)
-	offset := FREE_LIST_HEADER + 8*idx
-	binary.LittleEndian.PutUint64(node[offset:], ptr)
+	offset := FREE_LIST_HEADER + 16*idx
+	binary.LittleEndian.PutUint64(node[offset+0:], ptr)
+	binary.LittleEndian.PutUint64(node[offset+8:], version)
 }
 
 type FreeList struct {
@@ -51,6 +53,8 @@ type FreeList struct {
 	tailSeq  uint64 //标识空闲列表尾节点的位置
 	// in-memory states
 	maxSeq uint64 // saved `tailSeq` to prevent consuming newly added items
+	maxVer uint64 // the oldest reader version
+	curVer uint64 // version number when committing
 }
 
 //                      first_item
@@ -107,9 +111,12 @@ func flPop(fl *FreeList) (ptr uint64, head uint64) {
 
 	node := LNode(fl.get(fl.headPage))
 	// 顺序访问 ptr
-	ptr = node.getPtr(seq2idx(fl.headSeq))
-	fl.headSeq++
+	ptr, version := node.getItem(seq2idx(fl.headSeq))
+	if versionBefore(fl.maxVer, version) {
+		return 0, 0 // cannot advance; still in-use
+	}
 
+	fl.headSeq++
 	// move to the next one if the head node is empty
 	// 取之前headSeq = 510, headSeq%FREE_LIST_CAP = 510, 已经是ptr的最后一个位置了
 	// headSeq++, headSeq=511,此时 seq2idx(fl.headSeq) == 0 表示当前空闲链表头节点已经被取满
@@ -128,7 +135,7 @@ func (fl *FreeList) PushTail(ptr uint64) {
 	// node -> fl.get(fl.headPage) 读取当前headPage的数据, 并转为LNode类型
 	// 然后 node.setPtr(seq2idx(fl.tailSeq), ptr) 这个操作设置 ptr添加进哪个位置
 
-	LNode(fl.set(fl.tailPage)).setPtr(seq2idx(fl.tailSeq), ptr)
+	LNode(fl.set(fl.tailPage)).setItem(seq2idx(fl.tailSeq), ptr, fl.curVer)
 	fl.tailSeq++
 
 	// add a new tail node if it's full (the list is never empty)
@@ -151,15 +158,14 @@ func (fl *FreeList) PushTail(ptr uint64) {
 		// 把从head中取到的一个page加入空闲页中 ->(boltDB的freelist节点页管理问题)
 		// 这页虽然 将来会被回收，但 BoltDB 会确保 现在没人再需要它 才会去用它，不然数据当然就真的会丢。
 		if head != 0 {
-			LNode(fl.set(fl.tailPage)).setPtr(0, head)
+			LNode(fl.set(fl.tailPage)).setItem(0, head, fl.curVer)
 			fl.tailSeq++
 		}
 	}
 }
 
 // make the newly added items available for consumption
-// SetMaxSeq 将空闲链表的 maxSeq 设置为当前链表的尾部序列号（tailSeq）
-// 这样新加入的空闲页就会从maxseq开始递增,而不会覆盖或重用现有的页面
-func (fl *FreeList) SetMaxSeq() {
+func (fl *FreeList) SetMaxVer(maxVer uint64) {
 	fl.maxSeq = fl.tailSeq
+	fl.maxVer = maxVer
 }

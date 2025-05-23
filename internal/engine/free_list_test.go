@@ -47,7 +47,8 @@ func flDump(free *FreeList) (list []uint64, nodes []uint64) {
 	for seq := free.headSeq; seq != free.tailSeq; {
 		assert(ptr != 0)
 		node := LNode(free.get(ptr))
-		list = append(list, node.getPtr(seq2idx(seq)))
+		item, _ := node.getItem(seq2idx(seq))
+		list = append(list, item)
 		seq++
 		if seq2idx(seq) == 0 {
 			ptr = node.getNext()
@@ -112,10 +113,10 @@ func TestFreeListEmptyFullEmpty(t *testing.T) {
 		l.verify()
 
 		assert(l.pop() == 0)
-		l.free.SetMaxSeq()
+		l.free.SetMaxVer(0)
 		ptr := l.pop()
 		for ptr != 0 {
-			l.free.SetMaxSeq()
+			l.free.SetMaxVer(0)
 			ptr = l.pop()
 		}
 		l.verify()
@@ -132,13 +133,13 @@ func TestFreeListEmptyFullEmpty2(t *testing.T) {
 		l := newL()
 		for i := 0; i < N; i++ {
 			l.push(10000 + uint64(i))
-			l.free.SetMaxSeq() // allow self-reuse
+			l.free.SetMaxVer(0) // allow self-reuse
 		}
 		l.verify()
 
 		ptr := l.pop()
 		for ptr != 0 {
-			l.free.SetMaxSeq()
+			l.free.SetMaxVer(0)
 			ptr = l.pop()
 		}
 		l.verify()

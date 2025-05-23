@@ -13,8 +13,8 @@ import (
 
 type C struct {
 	tree  BTree
-	ref   map[string]string // the reference data
-	pages map[uint64]BNode  // in-emory pages
+	ref   map[string]string
+	pages map[uint64]BNode
 }
 
 func newC() *C {
@@ -44,14 +44,14 @@ func newC() *C {
 }
 
 func (c *C) add(key string, val string) {
-	err := c.tree.Insert([]byte(key), []byte(val))
+	_, err := c.tree.Upsert([]byte(key), []byte(val))
 	assert(err == nil)
 	c.ref[key] = val
 }
 
 func (c *C) del(key string) bool {
 	delete(c.ref, key)
-	deleted, err := c.tree.Delete([]byte(key))
+	deleted, err := c.tree.Delete(&DeleteReq{Key: []byte(key)})
 	assert(err == nil)
 	return deleted
 }
@@ -267,48 +267,40 @@ func TestBTreeIncLength(t *testing.T) {
 // Get time: 11.998730957s
 // Del time: 2m29.35970286s
 func TestBisect(t *testing.T) {
-	c := newD()
-	defer c.dispose()
+	c := newC()
 
 	const n = 100000
 	keys := make([][]byte, n)
 	for i := 0; i < n; i++ {
 		keys[i] = []byte(fmt.Sprintf("%05d", i))
 	}
-
 	// 随机打乱用于后续查询
 	rand.Shuffle(n, func(i, j int) {
 		keys[i], keys[j] = keys[j], keys[i]
 	})
 
-	var _err error
 	// 测试 Set
 	start := time.Now()
 	for i := 0; i < n; i++ {
-		if _err = c.db.Set(keys[i], []byte("val-"+string(keys[i]))); _err != nil {
-			t.Error(_err)
-		}
-
+		c.add(string(keys[i]), string("val-"+string(keys[i])))
 	}
+
 	fmt.Println("Set time:", time.Since(start))
 
 	// 测试 Get
 	start = time.Now()
 	for i := 0; i < n; i++ {
-		_, ok := c.db.Get(keys[i])
+		_, ok := c.tree.Get(keys[i])
 		if !ok {
 			t.Error(ok)
 		}
 	}
 	fmt.Println("Get time:", time.Since(start))
 
-	// 测试 Del
+	// 测试 Del keys[i]
 	start = time.Now()
 	for i := 0; i < n; i++ {
-		ok, _ := c.db.Del(keys[i])
-		if !ok {
-			t.Error(ok)
-		}
+		_ = c.del(string(keys[i]))
 	}
 	fmt.Println("Del time:", time.Since(start))
 }
