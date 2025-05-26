@@ -52,7 +52,7 @@ func (db *KV) pageRead(ptr uint64) []byte {
 		return node // pending update
 	}
 	// 说明数据已经写入磁盘, 从磁盘加载数据
-	return db.pageReadFile(ptr)
+	return mmapRead(ptr, db.mmap.chunks)
 }
 
 func mmapRead(ptr uint64, chunks [][]byte) []byte {
@@ -61,21 +61,6 @@ func mmapRead(ptr uint64, chunks [][]byte) []byte {
 		end := start + uint64(len(chunk))/BTREE_PAGE_SIZE
 		if ptr < end {
 			offset := BTREE_PAGE_SIZE * (ptr - start)
-			return chunk[offset : offset+BTREE_PAGE_SIZE]
-		}
-		start = end
-	}
-	panic("bad ptr")
-}
-
-func (db *KV) pageReadFile(ptr uint64) []byte {
-	start := uint64(0)
-	for _, chunk := range db.mmap.chunks {
-		//uint64(len(chunk)) / BTREE_PAGE_SIZE表示这个chunk一共占了多少页
-		end := start + uint64(len(chunk))/BTREE_PAGE_SIZE
-		if ptr < end {
-			// ptr落在[start, end)内, 这个chunk包含所要的页
-			offset := BTREE_PAGE_SIZE * (ptr - start) //偏移量
 			return chunk[offset : offset+BTREE_PAGE_SIZE]
 		}
 		start = end
@@ -110,8 +95,12 @@ func (db *KV) pageWrite(ptr uint64) []byte {
 	if node, ok := db.page.updates[ptr]; ok {
 		return node // pending update
 	}
+	// initialize from the file
 	node := make([]byte, BTREE_PAGE_SIZE)
-	copy(node, db.pageReadFile(ptr)) // initialized from the file
+	if !(ptr == 1 && db.page.flushed == 2) {
+		// special case: page 1 doesn't exist after creating an empty DB
+		copy(node, mmapRead(ptr, db.mmap.chunks))
+	}
 	db.page.updates[ptr] = node
 	return node
 }
@@ -209,10 +198,11 @@ func loadMeta(db *KV, data []byte) {
 	db.free.headSeq = binary.LittleEndian.Uint64(data[40:48])
 	db.free.tailPage = binary.LittleEndian.Uint64(data[48:56])
 	db.free.tailSeq = binary.LittleEndian.Uint64(data[56:64])
+	db.version = binary.LittleEndian.Uint64(data[64:72])
 }
 
 func saveMeta(db *KV) []byte {
-	var data [64]byte
+	var data [72]byte
 	copy(data[:16], []byte(DB_SIG))
 	binary.LittleEndian.PutUint64(data[16:24], db.tree.root)
 	binary.LittleEndian.PutUint64(data[24:32], db.page.flushed)
@@ -220,6 +210,7 @@ func saveMeta(db *KV) []byte {
 	binary.LittleEndian.PutUint64(data[40:48], db.free.headSeq)
 	binary.LittleEndian.PutUint64(data[48:56], db.free.tailPage)
 	binary.LittleEndian.PutUint64(data[56:64], db.free.tailSeq)
+	binary.LittleEndian.PutUint64(data[64:72], db.version)
 	return data[:]
 }
 
