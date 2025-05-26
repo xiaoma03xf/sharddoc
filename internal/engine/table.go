@@ -149,16 +149,16 @@ func unescapeString(in []byte) []byte {
 // order-preserving encoding
 func encodeValues(out []byte, vals []Value) []byte {
 	for _, v := range vals {
-		out = append(out, byte(v.Type)) // doesn't start with 0xff
+		out = append(out, byte(v.Type)) // 1. 类型标记
 		switch v.Type {
-		case TYPE_INT64:
+		case TYPE_INT64: // 处理整数
 			var buf [8]byte
-			u := uint64(v.I64) + (1 << 63)        // flip the sign bit
-			binary.BigEndian.PutUint64(buf[:], u) // big endian
+			u := uint64(v.I64) + (1 << 63)        // 符号位翻转
+			binary.BigEndian.PutUint64(buf[:], u) // 大端序存储
 			out = append(out, buf[:]...)
-		case TYPE_BYTES:
-			out = append(out, escapeString(v.Str)...)
-			out = append(out, 0) // null-terminated
+		case TYPE_BYTES: // 处理字符串
+			out = append(out, escapeString(v.Str)...) // 转义处理
+			out = append(out, 0)                      // 添加终止符
 		default:
 			panic("what?")
 		}
@@ -168,11 +168,12 @@ func encodeValues(out []byte, vals []Value) []byte {
 
 // for primary keys and indexes
 func encodeKey(out []byte, prefix uint32, vals []Value) []byte {
-	// 4-byte table prefix
+	// 1. 4字节表前缀
 	var buf [4]byte
 	binary.BigEndian.PutUint32(buf[:], prefix)
 	out = append(out, buf[:]...)
-	// order-preserving encoded keys
+
+	// 2. 编码列值
 	out = encodeValues(out, vals)
 	return out
 }
@@ -215,11 +216,14 @@ func decodeKey(in []byte, out []Value) {
 
 // get a single row by the primary key
 func dbGet(tx *DBTX, tdef *TableDef, rec *Record) (bool, error) {
+	// 提取索引字段的值（这里只查主键）
 	values, err := getValues(tdef, *rec, tdef.Indexes[0])
 	if err != nil {
 		return false, err // not a primary key
 	}
 	// just a shortcut for the scan operation
+	// 	Cmp1 == GE，Cmp2 == LE，代表执行一个闭区间扫描；
+	// 起止键都一样，所以就是 `查这一条` 的意思。
 	sc := Scanner{
 		Cmp1: CMP_GE,
 		Cmp2: CMP_LE,
@@ -256,7 +260,7 @@ var INTERNAL_TABLES map[string]*TableDef = map[string]*TableDef{
 	"@table": TDEF_TABLE,
 }
 
-// get the table schema by name
+// get the table schema by name, 获取表结构定义（带缓存）
 func getTableDef(tx *DBTX, name string) *TableDef {
 	if tdef, ok := INTERNAL_TABLES[name]; ok {
 		return tdef // expose internal tables
@@ -320,6 +324,8 @@ func checkIndexCols(tdef *TableDef, index []string) ([]string, error) {
 		return nil, fmt.Errorf("empty index")
 	}
 	seen := map[string]bool{}
+
+	// 对索引的字段检查, 是否字段存在, 是否重复
 	for _, c := range index {
 		// check the index columns
 		if slices.Index(tdef.Cols, c) < 0 {
@@ -331,6 +337,7 @@ func checkIndexCols(tdef *TableDef, index []string) ([]string, error) {
 		seen[c] = true
 	}
 	// add the primary key to the index
+	// 确保每个索引都包含了主键字段
 	for _, c := range tdef.Indexes[0] {
 		if !seen[c] {
 			index = append(index, c)
@@ -341,7 +348,7 @@ func checkIndexCols(tdef *TableDef, index []string) ([]string, error) {
 }
 
 func (tx *DBTX) TableNew(tdef *TableDef) error {
-	// 0. sanity checks
+	// 0. sanity checks, 校验表结构
 	if err := tableDefCheck(tdef); err != nil {
 		return err
 	}
@@ -352,7 +359,7 @@ func (tx *DBTX) TableNew(tdef *TableDef) error {
 	if ok {
 		return fmt.Errorf("table exists: %s", tdef.Name)
 	}
-	// 2. allocate new prefixes
+	// 2. allocate new prefixes, 分配前缀
 	prefix := uint32(TABLE_PREFIX_MIN)
 	meta := (&Record{}).AddStr("key", []byte("next_prefix"))
 	ok, err = dbGet(tx, TDEF_META, meta)
@@ -516,10 +523,11 @@ func (tx *DBTX) Delete(table string, rec Record) (bool, error) {
 	return dbDelete(tx, tdef, rec)
 }
 
+// 初始化数据库实例, 打开底层KV存储
 func (db *DB) Open() error {
 	db.kv.Path = db.Path
-	db.tables = map[string]*TableDef{}
-	return db.kv.Open()
+	db.tables = map[string]*TableDef{} // 初始化表缓存
+	return db.kv.Open()                // 打开KV存储文件
 }
 
 func (db *DB) Close() {
