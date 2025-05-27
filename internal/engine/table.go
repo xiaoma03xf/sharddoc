@@ -262,13 +262,17 @@ var INTERNAL_TABLES map[string]*TableDef = map[string]*TableDef{
 
 // get the table schema by name, 获取表结构定义（带缓存）
 func getTableDef(tx *DBTX, name string) *TableDef {
+	// 1. 检查是否是内部表（如 @meta, @table）
 	if tdef, ok := INTERNAL_TABLES[name]; ok {
-		return tdef // expose internal tables
+		return tdef // expose internal tables, 直接返回内部表定义
 	}
 	tx.db.mu.Lock()
 	defer tx.db.mu.Unlock()
+
+	// 3. 检查缓存中是否存在表定义
 	tdef := tx.db.tables[name]
 	if tdef == nil {
+		// 4. 缓存未命中时，从数据库加载表定义
 		if tdef = getTableDefDB(tx, name); tdef != nil {
 			tx.db.tables[name] = tdef
 		}
@@ -277,25 +281,33 @@ func getTableDef(tx *DBTX, name string) *TableDef {
 }
 
 func getTableDefDB(tx *DBTX, name string) *TableDef {
+	// 1. 构造查询记录（主键为表名）
 	rec := (&Record{}).AddStr("name", []byte(name))
+
+	// 2. 从系统表 @table 中查询表定义
 	ok, err := dbGet(tx, TDEF_TABLE, rec)
 	assert(err == nil)
 	if !ok {
 		return nil
 	}
 
+	// 3. 反序列化 JSON 数据到 TableDef
 	tdef := &TableDef{}
 	err = json.Unmarshal(rec.Get("def").Str, tdef)
-	assert(err == nil)
+	assert(err == nil) // 确保反序列化成功
 	return tdef
 }
 
 // get a single row by the primary key
+// 获取表结构分两步, 如果要查询的是系统表则返回, 如果缓存中没有就用name主键去系统表中查询
+// 然后把查询的结果放入缓存中, 然后通过主键查询记录
 func (tx *DBTX) Get(table string, rec *Record) (bool, error) {
+	// 1. 获取表结构定义（带缓存）
 	tdef := getTableDef(tx, table)
 	if tdef == nil {
 		return false, fmt.Errorf("table not found: %s", table)
 	}
+	// 2. 通过主键查询记录
 	return dbGet(tx, tdef, rec)
 }
 
@@ -308,7 +320,7 @@ func tableDefCheck(tdef *TableDef) error {
 	if bad {
 		return fmt.Errorf("bad table schema: %s", tdef.Name)
 	}
-	// verify the indexes
+	// verify the indexes, 依次校验每一个索引是否有问题
 	for i, index := range tdef.Indexes {
 		index, err := checkIndexCols(tdef, index)
 		if err != nil {
@@ -348,7 +360,7 @@ func checkIndexCols(tdef *TableDef, index []string) ([]string, error) {
 }
 
 func (tx *DBTX) TableNew(tdef *TableDef) error {
-	// 0. sanity checks, 校验表结构
+	// 0. sanity checks, 校验表结构,检查表定义是否合法
 	if err := tableDefCheck(tdef); err != nil {
 		return err
 	}
@@ -360,6 +372,8 @@ func (tx *DBTX) TableNew(tdef *TableDef) error {
 		return fmt.Errorf("table exists: %s", tdef.Name)
 	}
 	// 2. allocate new prefixes, 分配前缀
+	//TDEF_META 是数据库内部的`元数据表`，用来保存系统内部的配置、状态等，比如前缀分配器
+	// 去TDEF_META表中查询"key","next_prefix"字段
 	prefix := uint32(TABLE_PREFIX_MIN)
 	meta := (&Record{}).AddStr("key", []byte("next_prefix"))
 	ok, err = dbGet(tx, TDEF_META, meta)
@@ -368,21 +382,23 @@ func (tx *DBTX) TableNew(tdef *TableDef) error {
 		prefix = binary.LittleEndian.Uint32(meta.Get("val").Str)
 		assert(prefix > TABLE_PREFIX_MIN)
 	} else {
+		// 处理首次分配
 		meta.AddStr("val", make([]byte, 4))
 	}
 	assert(len(tdef.Prefixes) == 0)
 	for i := range tdef.Indexes {
+		// 为索引分配前缀
 		tdef.Prefixes = append(tdef.Prefixes, prefix+uint32(i))
 	}
 	// 3. update the next prefix
-	// FIXME: integer overflow.
+	// FIXME: integer overflow.跟新下一个前缀并写入
 	next := prefix + uint32(len(tdef.Indexes))
 	binary.LittleEndian.PutUint32(meta.Get("val").Str, next)
 	_, err = dbUpdate(tx, TDEF_META, &DBUpdateReq{Record: *meta})
 	if err != nil {
 		return err
 	}
-	// 4. store the schema
+	// 4. store the schema, 持久化表结构
 	val, err := json.Marshal(tdef)
 	assert(err == nil)
 	table.AddStr("def", val)
@@ -399,9 +415,10 @@ type DBUpdateReq struct {
 	Added   bool
 }
 
-// add a row to the table
+// add a row to the table, 更新一行的数据
 func dbUpdate(tx *DBTX, tdef *TableDef, dbreq *DBUpdateReq) (bool, error) {
 	// reorder the columns so that they start with the primary key
+	// cols 把主键和非主键拼接起来, 然后取出当前数据
 	cols := slices.Concat(tdef.Indexes[0], nonPrimaryKeyCols(tdef))
 	values, err := getValues(tdef, dbreq.Record, cols)
 	if err != nil {
@@ -409,6 +426,7 @@ func dbUpdate(tx *DBTX, tdef *TableDef, dbreq *DBUpdateReq) (bool, error) {
 	}
 
 	// insert the row
+	// npk 表示主键长度, 所以key编码values[:npk],values编码values[npk:]
 	npk := len(tdef.Indexes[0]) // number of primary key columns
 	key := encodeKey(nil, tdef.Prefixes[0], values[:npk])
 	val := encodeValues(nil, values[npk:])
@@ -419,11 +437,12 @@ func dbUpdate(tx *DBTX, tdef *TableDef, dbreq *DBUpdateReq) (bool, error) {
 	dbreq.Added, dbreq.Updated = req.Added, req.Updated
 
 	// maintain secondary indexes
+	// 如果这个记录是被更新了而不是添加
 	if req.Updated && !req.Added {
 		// construct the old record
 		decodeValues(req.Old, values[npk:])
 		oldRec := Record{cols, values}
-		// delete the indexed keys
+		// delete the indexed keys, 删除索引字段
 		err := indexOp(tx, tdef, INDEX_DEL, oldRec)
 		assert(err == nil) // should not run into the length limit
 	}
@@ -438,6 +457,7 @@ func dbUpdate(tx *DBTX, tdef *TableDef, dbreq *DBUpdateReq) (bool, error) {
 
 func nonPrimaryKeyCols(tdef *TableDef) (out []string) {
 	for _, c := range tdef.Cols {
+		// c 这个字段名不在主键字段列表（tdef.Indexes[0]）中，也就是`非主键字段`
 		if slices.Index(tdef.Indexes[0], c) < 0 {
 			out = append(out, c)
 		}
@@ -561,15 +581,22 @@ func (sc *Scanner) Next() {
 // return the current row
 func (sc *Scanner) Deref(rec *Record) {
 	assert(sc.Valid())
-	tdef := sc.tdef
+	tdef := sc.tdef // 获取当前表定义
+
 	// prepare the output record
+	// 拼接主键和非主键列，形成完整的列顺序
+	// rec.Cols 把主键和非主键拼接起来, tdef.Indexes[0] 表示主键, nonPrimaryKeyCols非主键切片
 	rec.Cols = slices.Concat(tdef.Indexes[0], nonPrimaryKeyCols(tdef))
+
+	// 把rec.Vals的值清空, 准备存放新的值
 	rec.Vals = rec.Vals[:0]
 	for _, c := range rec.Cols {
 		tp := tdef.Types[slices.Index(tdef.Cols, c)]
 		rec.Vals = append(rec.Vals, Value{Type: tp})
 	}
+
 	// fetch the KV from the iterator
+	// 从迭代器中获取当前键值对
 	key, val := sc.iter.Deref()
 	// primary key or secondary index?
 	if sc.index == 0 {
@@ -579,6 +606,7 @@ func (sc *Scanner) Deref(rec *Record) {
 		decodeValues(val, rec.Vals[npk:])
 	} else {
 		// decode the index key
+		// 解码二级索引的键
 		assert(len(val) == 0)
 		index := tdef.Indexes[sc.index]
 		irec := Record{index, make([]Value, len(index))}
@@ -586,7 +614,9 @@ func (sc *Scanner) Deref(rec *Record) {
 			irec.Vals[i].Type = tdef.Types[slices.Index(tdef.Cols, c)]
 		}
 		decodeKey(key, irec.Vals)
+
 		// extract the primary key
+		// 从索引键中提取主键值
 		for i, c := range tdef.Indexes[0] {
 			rec.Vals[i] = *irec.Get(c)
 		}

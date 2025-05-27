@@ -47,7 +47,7 @@ const (
 )
 
 // begin a transaction
-// 初始化一个新的事务 tx，让它拥有当前数据库的快照版本，并准备好一个空的“待提交修改表”
+// 初始化一个新的事务 tx，让它拥有当前数据库的快照版本，并准备好一个空的`待提交修改表`
 func (kv *KV) Begin(tx *KVTX) {
 	kv.mutex.Lock()
 	defer kv.mutex.Unlock()
