@@ -191,23 +191,23 @@ func encodeKeyPartial(
 
 func decodeValues(in []byte, out []Value) {
 	for i := range out {
-		assert(out[i].Type == uint32(in[0]))
-		in = in[1:]
+		assert(out[i].Type == uint32(in[0])) // 检查出入数据类型一致
+		in = in[1:]                          // 处理完一个字节，移除该字节
 		switch out[i].Type {
 		case TYPE_INT64:
-			u := binary.BigEndian.Uint64(in[:8])
-			out[i].I64 = int64(u - (1 << 63))
-			in = in[8:]
+			u := binary.BigEndian.Uint64(in[:8]) // 读取 8 个字节，转换为 uint64
+			out[i].I64 = int64(u - (1 << 63))    // 通过减去最大偏移量将其转换为负数或正数
+			in = in[8:]                          // 移除已经处理的字节
 		case TYPE_BYTES:
-			idx := bytes.IndexByte(in, 0)
-			assert(idx >= 0)
-			out[i].Str = unescapeString(in[:idx])
-			in = in[idx+1:]
+			idx := bytes.IndexByte(in, 0)         // 查找字节数组中的第一个 0 字节
+			assert(idx >= 0)                      // 确保找到了 0 字节
+			out[i].Str = unescapeString(in[:idx]) // 解码字符串
+			in = in[idx+1:]                       // 移除已处理的字节（包括 0 字节）
 		default:
-			panic("what?")
+			panic("what?") // 如果遇到未知类型，则抛出异常
 		}
 	}
-	assert(len(in) == 0)
+	assert(len(in) == 0) // 确保处理后的输入字节数组为空
 }
 
 func decodeKey(in []byte, out []Value) {
@@ -416,9 +416,12 @@ type DBUpdateReq struct {
 }
 
 // add a row to the table, 更新一行的数据
+// 1.先把主键和非主键拼接，也把它们对应的值拼接起来
+// 2. 获取主键的长度， 主键编码需要和prefix配合， 然后编码值
+// 3. 删除原索引, 创建新索引
 func dbUpdate(tx *DBTX, tdef *TableDef, dbreq *DBUpdateReq) (bool, error) {
 	// reorder the columns so that they start with the primary key
-	// cols 把主键和非主键拼接起来, 然后取出当前数据
+	// cols 把主键和非主键拼接起来, 然后取出当前数据, values 通过 依次遍历cols中的键位获得值
 	cols := slices.Concat(tdef.Indexes[0], nonPrimaryKeyCols(tdef))
 	values, err := getValues(tdef, dbreq.Record, cols)
 	if err != nil {
@@ -426,7 +429,7 @@ func dbUpdate(tx *DBTX, tdef *TableDef, dbreq *DBUpdateReq) (bool, error) {
 	}
 
 	// insert the row
-	// npk 表示主键长度, 所以key编码values[:npk],values编码values[npk:]
+	// npk 表示主键长度, 先获取主键的长度(主键可能是多个key也可能是单key), 然后把主键和prefix编码
 	npk := len(tdef.Indexes[0]) // number of primary key columns
 	key := encodeKey(nil, tdef.Prefixes[0], values[:npk])
 	val := encodeValues(nil, values[npk:])
@@ -515,6 +518,7 @@ func (tx *DBTX) Upsert(table string, rec Record) (bool, error) {
 
 // delete a record by its primary key
 func dbDelete(tx *DBTX, tdef *TableDef, rec Record) (bool, error) {
+	// 获取列值
 	values, err := getValues(tdef, rec, tdef.Indexes[0])
 	if err != nil {
 		return false, err

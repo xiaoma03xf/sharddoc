@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/itxiaoma0610/sharddoc/internal/lib/logger"
+	"github.com/itxiaoma0610/sharddoc/lib/logger"
 )
 
 type HandleFunc func(ctx context.Context, conn net.Conn)

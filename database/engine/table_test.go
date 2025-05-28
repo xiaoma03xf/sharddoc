@@ -1,8 +1,10 @@
 package engine
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand"
 	"os"
 	"reflect"
 	"sort"
@@ -139,7 +141,7 @@ func TestTableCreate(t *testing.T) {
 		}
 	}()
 	r := newR()
-	
+
 	// 创建一个测试表，包含多种类型的列和索引
 	tdef := &TableDef{
 		Name:    "tbl_test",
@@ -205,7 +207,7 @@ func TestTableBasic(t *testing.T) {
 		ok := r.get("tbl_test", &got)
 		is.True(t, ok)
 	}
-	
+
 	// 测试查询不存在的记录
 	{
 		got := Record{}
@@ -391,7 +393,7 @@ func TestTableScan(t *testing.T) {
 					Key2: i2key(j + 2),
 				},
 			}
-			
+
 			// 为每个扫描器创建反向版本（交换比较操作和键）
 			for _, tmp := range scanners {
 				tmp.Cmp1, tmp.Cmp2 = tmp.Cmp2, tmp.Cmp1
@@ -412,7 +414,7 @@ func TestTableScan(t *testing.T) {
 					keys = append(keys, got.Get("ki1").I64)
 					sc.Next()
 				}
-				
+
 				// 如果是反向扫描，需要反转结果进行比较
 				if sc.Cmp1 < sc.Cmp2 {
 					// 反转数组
@@ -441,10 +443,10 @@ func TestTableIndex(t *testing.T) {
 		Cols:  []string{"ki1", "ks2", "s1", "i2"},
 		Types: []uint32{TYPE_INT64, TYPE_BYTES, TYPE_BYTES, TYPE_INT64},
 		Indexes: [][]string{
-			{"ki1", "ks2"},  // 主键索引
-			{"ks2", "ki1"},  // 二级索引1：反向主键
-			{"i2"},          // 二级索引2：单列
-			{"ki1", "i2"},   // 二级索引3：复合列
+			{"ki1", "ks2"}, // 主键索引
+			{"ks2", "ki1"}, // 二级索引1：反向主键
+			{"i2"},         // 二级索引2：单列
+			{"ki1", "i2"},  // 二级索引3：复合列
 		},
 	}
 	r.create(tdef)
@@ -566,4 +568,321 @@ func TestRecord(t *testing.T) {
 	r := Record{}
 	r.AddStr("name", []byte("jack")).AddInt64("age", 18)
 	fmt.Println(r.Get("name").Type, string(r.Get("name").Str), fmt.Sprint(r.Get("name").I64))
+	for i := 0; i < len(r.Cols); i++ {
+		if r.Vals[i].Type == 1 {
+			fmt.Println("col:", string(r.Cols[i]), "val:", string(r.Vals[i].Str))
+		} else if r.Vals[i].Type == 2 {
+			fmt.Println("col:", string(r.Cols[i]), "val:", r.Vals[i].I64)
+		}
+	}
+}
+
+// TestScanner 测试表的范围扫描功能
+// 验证使用二级索引进行范围查询的正确性
+func TestScanner(t *testing.T) {
+	r := newR()
+	defer r.dispose() // 只需要一个 dispose
+
+	tdef := &TableDef{
+		Name:  "tbl_test",
+		Cols:  []string{"ki1", "ks2", "s1", "i2"},
+		Types: []uint32{TYPE_INT64, TYPE_BYTES, TYPE_BYTES, TYPE_INT64},
+		Indexes: [][]string{
+			{"ki1", "ks2"}, // 主键索引
+			{"i2"},         // 二级索引
+		},
+	}
+	r.create(tdef)
+
+	// 添加测试数据
+	size := 100
+	for i := 0; i < size; i += 2 {
+		rec := Record{}
+		rec.AddInt64("ki1", int64(i)).AddStr("ks2", []byte("hello"))
+		rec.AddStr("s1", []byte("world")).AddInt64("i2", int64(i/2))
+		added := r.add("tbl_test", rec)
+		assert(added)
+	}
+
+	// 测试范围扫描（使用i2索引，范围5-15）
+	tx := r.begin()
+	{
+		rec1 := Record{}
+		rec1.AddInt64("i2", 5)
+
+		rec2 := Record{}
+		rec2.AddInt64("i2", 15)
+
+		req := Scanner{
+			Cmp1: CMP_GE,
+			Cmp2: CMP_LE,
+			Key1: rec1,
+			Key2: rec2,
+		}
+		err := tx.Scan("tbl_test", &req)
+		assert(err == nil)
+
+		got := []Record{}
+		for req.Valid() {
+			rec := Record{}
+			req.Deref(&rec)
+			got = append(got, rec)
+			req.Next()
+		}
+
+		for j := 0; j < len(got); j++ {
+			r := got[j]
+			for i := 0; i < len(r.Cols); i++ {
+				if r.Vals[i].Type == 1 {
+					fmt.Println("col:", string(r.Cols[i]), "val:", string(r.Vals[i].Str))
+				} else if r.Vals[i].Type == 2 {
+					fmt.Println("col:", string(r.Cols[i]), "val:", r.Vals[i].I64)
+				}
+			}
+		}
+
+		// 从参考数据中筛选出应该在范围内的记录
+		expected := []Record{}
+		for _, rec := range r.ref["tbl_test"] {
+			i2val := rec.Get("i2").I64
+			if i2val >= 5 && i2val <= 15 {
+				expected = append(expected, rec)
+			}
+		}
+
+		// 比较扫描结果和预期结果
+		is.Equal(t, expected, got)
+	}
+	r.commit(tx)
+}
+
+type RecordTestData struct {
+	ID     int64
+	Name   string
+	Age    int64
+	Height int64
+}
+
+func GenerateTestData(filepath string, count int) error {
+	generateRandomString := func() string {
+		const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		b := make([]byte, 6)
+		b[0] = letters[rand.Intn(26)+26]
+		for i := 1; i < 6; i++ {
+			b[i] = letters[rand.Intn(26)]
+		}
+		return string(b)
+	}
+
+	records := make([]RecordTestData, count)
+	for i := 0; i < count; i++ {
+		records[i] = RecordTestData{
+			ID:     int64(i + 1),
+			Name:   generateRandomString(), 
+			Age:    rand.Int63n(30) + 15,   
+			Height: rand.Int63n(40) + 150, 
+		}
+	}
+
+	// 写入文件部分保持不变...
+	file, err := os.Create(filepath)
+	if err != nil {
+		return fmt.Errorf("could not create file: %v", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(records); err != nil {
+		return fmt.Errorf("could not write data to file: %v", err)
+	}
+
+	if err := os.Chmod(filepath, 0644); err != nil {
+		return fmt.Errorf("could not set file permissions: %v", err)
+	}
+
+	return nil
+}
+
+func ReadTestDataFromFile(filePath string) ([]RecordTestData, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("could not open file: %v", err)
+	}
+	defer file.Close()
+	var records []RecordTestData
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&records); err != nil {
+		return nil, fmt.Errorf("could not read data from file: %v", err)
+	}
+
+	return records, nil
+}
+
+func PrintIndexQuery(req Scanner) {
+	got := []Record{}
+	for req.Valid() {
+		rec := Record{}
+		req.Deref(&rec)
+		got = append(got, rec)
+		req.Next()
+	}
+
+	// 打印表头
+	fmt.Printf("%-10s %-20s %-10s %-10s\n", "ID", "Name", "Age", "Height")
+	fmt.Println("---------------------------------------------------------")
+
+	// 打印每一条记录
+	for _, r := range got {
+		var id int64
+		var name string
+		var age, height int64
+
+		for i := 0; i < len(r.Cols); i++ {
+			switch string(r.Cols[i]) {
+			case "id":
+				if r.Vals[i].Type == 2 {
+					id = r.Vals[i].I64
+				}
+			case "name":
+				if r.Vals[i].Type == 1 {
+					name = string(r.Vals[i].Str)
+				}
+			case "age":
+				if r.Vals[i].Type == 2 {
+					age = r.Vals[i].I64
+				}
+			case "height":
+				if r.Vals[i].Type == 2 {
+					height = r.Vals[i].I64
+				}
+			}
+		}
+
+		// 输出数据
+		fmt.Printf("%-10d %-20s %-10d %-10d\n", id, name, age, height)
+	}
+}
+
+func fileExists(filePath string) bool {
+	_, err := os.Stat(filePath)
+	return !os.IsNotExist(err)
+}
+func TestIndexQuery(t *testing.T) {
+	// 	const (
+	// 	CMP_GE = +3 // >=
+	// 	CMP_GT = +2 // >
+	// 	CMP_LT = -2 // <
+	// 	CMP_LE = -3 // <=
+	// )
+	r := newR()
+	defer r.dispose()
+
+	tdef := &TableDef{
+		Name:  "tbl_test",
+		Cols:  []string{"id", "name", "age", "height"},
+		Types: []uint32{TYPE_INT64, TYPE_BYTES, TYPE_INT64, TYPE_INT64},
+		Indexes: [][]string{
+			{"id"},            // 主键索引
+			{"age", "height"}, // 二级索引（复合索引）
+		},
+	}
+	r.create(tdef)
+	record := func(id int64, name string, age int64, height int64) Record {
+		rec := Record{}
+		rec.AddInt64("id", id).AddStr("name", []byte(name))
+		rec.AddInt64("age", age).AddInt64("height", height)
+		return rec
+	}
+	fmt.Printf("Adding test records...\n")
+
+	// 持久化测试数据,便于观察
+	filePath := "test_data.json"
+	if !fileExists(filePath) {
+		_ = GenerateTestData(filePath, 2000)
+	}
+
+	records, err := ReadTestDataFromFile(filePath)
+	if err != nil {
+		fmt.Println("Error reading data:", err)
+		return
+	}
+
+	for _, rec_data := range records {
+		rec := record(rec_data.ID, rec_data.Name, rec_data.Age, rec_data.Height)
+		added := r.add("tbl_test", rec)
+		assert(added)
+	}
+	fmt.Printf("Added test records successfully\n")
+
+	// test age == 18
+	fmt.Println("select * from table where age == 18")
+	tx := r.begin()
+	{
+		rec := Record{}
+		rec.AddInt64("age", 18)
+		req := Scanner{
+			Cmp1: CMP_GE, Cmp2: CMP_LE,
+			Key1: rec, Key2: rec,
+		}
+		err := tx.Scan("tbl_test", &req)
+		assert(err == nil)
+		PrintIndexQuery(req)
+	}
+	r.commit(tx)
+
+	fmt.Println()
+	fmt.Println("select * from table where age > 43")
+	tx = r.begin()
+	{
+		rec := Record{}
+		rec.AddInt64("age", 43)
+
+		rec2 := Record{}
+		rec2.AddInt64("age", math.MaxInt64/2)
+		req := Scanner{
+			Cmp1: CMP_GE, Cmp2: CMP_LE,
+			Key1: rec, Key2: rec2,
+		}
+		err := tx.Scan("tbl_test", &req)
+		assert(err == nil)
+		PrintIndexQuery(req)
+	}
+	r.commit(tx)
+
+	fmt.Println()
+	fmt.Println("select * from table where age == 18 and height == 174")
+	tx = r.begin()
+	{
+		rec := Record{}
+		rec.AddInt64("age", 18).AddInt64("height", 174)
+		req := Scanner{
+			Cmp1: CMP_GE, Cmp2: CMP_LE,
+			Key1: rec, Key2: rec,
+		}
+		err := tx.Scan("tbl_test", &req)
+		assert(err == nil)
+		PrintIndexQuery(req)
+	}
+	r.commit(tx)
+
+	fmt.Println()
+	fmt.Println("select * from table where age == 18 and height between 170 and 175 ")
+	tx = r.begin()
+	{
+		rec := Record{}
+		rec.AddInt64("age", 18).AddInt64("height", 170)
+
+		rec2 := Record{}
+		rec2.AddInt64("age", 18).AddInt64("height", 175)
+
+		req := Scanner{
+			Cmp1: CMP_GE, Cmp2: CMP_LE,
+			Key1: rec, Key2: rec2,
+		}
+		err := tx.Scan("tbl_test", &req)
+		assert(err == nil)
+		PrintIndexQuery(req)
+	}
+	r.commit(tx)
 }
