@@ -20,7 +20,7 @@ type R struct {
 }
 
 // newR 创建一个新的测试辅助实例，初始化测试数据库
-func newR() *R {
+func NewR() *R {
 	os.Remove("r.db")
 	r := &R{
 		db:  DB{Path: "r.db"},
@@ -140,7 +140,7 @@ func TestTableCreate(t *testing.T) {
 			os.Remove("r.db")
 		}
 	}()
-	r := newR()
+	r := NewR()
 
 	// 创建一个测试表，包含多种类型的列和索引
 	tdef := &TableDef{
@@ -184,7 +184,7 @@ func TestTableCreate(t *testing.T) {
 // TestTableBasic 测试表的基本CRUD操作
 // 验证记录的添加、查询、更新和删除功能
 func TestTableBasic(t *testing.T) {
-	r := newR()
+	r := NewR()
 	tdef := &TableDef{
 		Name:    "tbl_test",
 		Cols:    []string{"ki1", "ks2", "s1", "i2"},
@@ -290,7 +290,7 @@ func TestTableEncoding(t *testing.T) {
 // TestTableScan 测试表扫描功能
 // 验证在各种条件下的范围查询和索引扫描
 func TestTableScan(t *testing.T) {
-	r := newR()
+	r := NewR()
 	tdef := &TableDef{
 		Name:  "tbl_test",
 		Cols:  []string{"ki1", "ks2", "s1", "i2"},
@@ -437,7 +437,7 @@ func TestTableScan(t *testing.T) {
 // TestTableIndex 测试表索引功能
 // 验证多索引表的查询和更新操作
 func TestTableIndex(t *testing.T) {
-	r := newR()
+	r := NewR()
 	tdef := &TableDef{
 		Name:  "tbl_test",
 		Cols:  []string{"ki1", "ks2", "s1", "i2"},
@@ -580,7 +580,7 @@ func TestRecord(t *testing.T) {
 // TestScanner 测试表的范围扫描功能
 // 验证使用二级索引进行范围查询的正确性
 func TestScanner(t *testing.T) {
-	r := newR()
+	r := NewR()
 	defer r.dispose() // 只需要一个 dispose
 
 	tdef := &TableDef{
@@ -678,9 +678,9 @@ func GenerateTestData(filepath string, count int) error {
 	for i := 0; i < count; i++ {
 		records[i] = RecordTestData{
 			ID:     int64(i + 1),
-			Name:   generateRandomString(), 
-			Age:    rand.Int63n(30) + 15,   
-			Height: rand.Int63n(40) + 150, 
+			Name:   generateRandomString(),
+			Age:    rand.Int63n(30) + 15,
+			Height: rand.Int63n(40) + 150,
 		}
 	}
 
@@ -775,7 +775,7 @@ func TestIndexQuery(t *testing.T) {
 	// 	CMP_LT = -2 // <
 	// 	CMP_LE = -3 // <=
 	// )
-	r := newR()
+	r := NewR()
 	defer r.dispose()
 
 	tdef := &TableDef{

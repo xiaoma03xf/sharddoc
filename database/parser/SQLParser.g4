@@ -4,27 +4,40 @@ options {
   tokenVocab=SQLLexer;
 }
 
-// 根规则，表示整个 SQL 语句
-sql : createTableStatement;
+
+sql : createTableStatement | insertTableStatement ; 
 
 // CREATE TABLE 语句
-createTableStatement : CREATE TABLE tableName LPAREN columnDefinitions indexDefinitions? RPAREN SEMICOLON;
+createTableStatement : 
+    CREATE TABLE tableName LPAREN     
+    columnDefinitions COMMA
+    PRIMARY KEY LPAREN columnName RPAREN COMMA    
+    indexDefinitions         
+    RPAREN SEMICOLON;          
 
-// 表名
 tableName : IDENTIFIER;
+columnName : IDENTIFIER;
+columnType : INT64 | BYTES;
 
-// 列定义
 columnDefinitions : columnDefinition (COMMA columnDefinition)*;
-
-// 单列定义
 columnDefinition : columnName columnType;
 
-// 列名
-columnName : IDENTIFIER;
+indexDefinitions : indexDefinition (COMMA indexDefinition)*;
+indexDefinition : INDEX LPAREN columnName (COMMA columnName)* RPAREN;
 
-// 列类型
-columnType : INT64 | BYTES | VARCHAR | TEXT | DATE | FLOAT;
 
-// 索引定义
-indexDefinitions : PRIMARY KEY LPAREN columnName RPAREN
-                 | INDEX LPAREN columnName (COMMA columnName)* RPAREN;
+// Insert 语句
+insertTableStatement
+  : INSERT INTO tableName LPAREN columnInsertNames RPAREN VALUES LPAREN columnInsertValues RPAREN 
+  ;
+
+columnInsertNames
+  : columnName (COMMA columnName)*
+  ;
+columnInsertValues
+  : columnValue (COMMA columnValue)*
+  ;
+columnValue
+    : INTEGER       // 对应 INT64 列
+    | STRING        // 对应 BYTES 列
+    ;
