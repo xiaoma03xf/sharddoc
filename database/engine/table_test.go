@@ -783,7 +783,8 @@ func TestIndexQuery(t *testing.T) {
 		Cols:  []string{"id", "name", "age", "height"},
 		Types: []uint32{TYPE_INT64, TYPE_BYTES, TYPE_INT64, TYPE_INT64},
 		Indexes: [][]string{
-			{"id"},            // 主键索引
+			{"id"}, // 主键索引
+			{"name"},
 			{"age", "height"}, // 二级索引（复合索引）
 		},
 	}
@@ -850,6 +851,25 @@ func TestIndexQuery(t *testing.T) {
 	}
 	r.commit(tx)
 
+	fmt.Println("")
+	fmt.Println("select * from table where name > yang")
+	tx = r.begin()
+	{
+		rec := Record{}
+		rec.AddStr("name", []byte("Yang"))
+
+		rec2 := Record{}
+		rec2.AddStr("name", []byte("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"))
+		req := Scanner{
+			Cmp1: CMP_GE, Cmp2: CMP_LE,
+			Key1: rec, Key2: rec2,
+		}
+		err := tx.Scan("tbl_test", &req)
+		assert(err == nil)
+		PrintIndexQuery(req)
+	}
+	r.commit(tx)
+
 	fmt.Println()
 	fmt.Println("select * from table where age == 18 and height == 174")
 	tx = r.begin()
@@ -875,6 +895,26 @@ func TestIndexQuery(t *testing.T) {
 
 		rec2 := Record{}
 		rec2.AddInt64("age", 18).AddInt64("height", 175)
+
+		req := Scanner{
+			Cmp1: CMP_GE, Cmp2: CMP_LE,
+			Key1: rec, Key2: rec2,
+		}
+		err := tx.Scan("tbl_test", &req)
+		assert(err == nil)
+		PrintIndexQuery(req)
+	}
+	r.commit(tx)
+
+	fmt.Println()
+	fmt.Println("select * from table where age == 18 and height < 175 ")
+	tx = r.begin()
+	{
+		rec := Record{}
+		rec.AddInt64("age", 18).AddInt64("height", 175)
+
+		rec2 := Record{}
+		rec2.AddInt64("age", 20).AddInt64("height", 175)
 
 		req := Scanner{
 			Cmp1: CMP_GE, Cmp2: CMP_LE,

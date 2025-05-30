@@ -45,4 +45,19 @@ type SQLParserVisitor interface {
 
 	// Visit a parse tree produced by SQLParser#columnValue.
 	VisitColumnValue(ctx *ColumnValueContext) interface{}
+
+	// Visit a parse tree produced by SQLParser#selectTableStatement.
+	VisitSelectTableStatement(ctx *SelectTableStatementContext) interface{}
+
+	// Visit a parse tree produced by SQLParser#selectColumnNames.
+	VisitSelectColumnNames(ctx *SelectColumnNamesContext) interface{}
+
+	// Visit a parse tree produced by SQLParser#condition.
+	VisitCondition(ctx *ConditionContext) interface{}
+
+	// Visit a parse tree produced by SQLParser#comparisonCondition.
+	VisitComparisonCondition(ctx *ComparisonConditionContext) interface{}
+
+	// Visit a parse tree produced by SQLParser#betweenCondition.
+	VisitBetweenCondition(ctx *BetweenConditionContext) interface{}
 }

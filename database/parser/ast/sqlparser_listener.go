@@ -46,6 +46,21 @@ type SQLParserListener interface {
 	// EnterColumnValue is called when entering the columnValue production.
 	EnterColumnValue(c *ColumnValueContext)
 
+	// EnterSelectTableStatement is called when entering the selectTableStatement production.
+	EnterSelectTableStatement(c *SelectTableStatementContext)
+
+	// EnterSelectColumnNames is called when entering the selectColumnNames production.
+	EnterSelectColumnNames(c *SelectColumnNamesContext)
+
+	// EnterCondition is called when entering the condition production.
+	EnterCondition(c *ConditionContext)
+
+	// EnterComparisonCondition is called when entering the comparisonCondition production.
+	EnterComparisonCondition(c *ComparisonConditionContext)
+
+	// EnterBetweenCondition is called when entering the betweenCondition production.
+	EnterBetweenCondition(c *BetweenConditionContext)
+
 	// ExitSql is called when exiting the sql production.
 	ExitSql(c *SqlContext)
 
@@ -84,4 +99,19 @@ type SQLParserListener interface {
 
 	// ExitColumnValue is called when exiting the columnValue production.
 	ExitColumnValue(c *ColumnValueContext)
+
+	// ExitSelectTableStatement is called when exiting the selectTableStatement production.
+	ExitSelectTableStatement(c *SelectTableStatementContext)
+
+	// ExitSelectColumnNames is called when exiting the selectColumnNames production.
+	ExitSelectColumnNames(c *SelectColumnNamesContext)
+
+	// ExitCondition is called when exiting the condition production.
+	ExitCondition(c *ConditionContext)
+
+	// ExitComparisonCondition is called when exiting the comparisonCondition production.
+	ExitComparisonCondition(c *ComparisonConditionContext)
+
+	// ExitBetweenCondition is called when exiting the betweenCondition production.
+	ExitBetweenCondition(c *BetweenConditionContext)
 }

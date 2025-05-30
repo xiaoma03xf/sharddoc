@@ -5,7 +5,7 @@ options {
 }
 
 
-sql : createTableStatement | insertTableStatement ; 
+sql : createTableStatement | insertTableStatement | selectTableStatement; 
 
 // CREATE TABLE 语句
 createTableStatement : 
@@ -38,6 +38,29 @@ columnInsertValues
   : columnValue (COMMA columnValue)*
   ;
 columnValue
-    : INTEGER       // 对应 INT64 列
-    | STRING        // 对应 BYTES 列
+    : INTEGER    
+    | STRING      
     ;
+
+// Select 语句
+selectTableStatement
+  : SELECT selectColumnNames FROM tableName (WHERE condition (AND condition)*)?
+  ;
+
+  selectColumnNames
+  : STAR 
+  | columnName (COMMA columnName)*
+  ;
+
+  // basic commpare and between compare
+  condition
+  : comparisonCondition
+  | betweenCondition
+  ;
+  comparisonCondition
+  : columnName OP columnValue
+  ;
+  betweenCondition
+  : columnName BETWEEN columnValue AND columnValue
+  ;
+

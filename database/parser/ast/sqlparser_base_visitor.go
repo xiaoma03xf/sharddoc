@@ -58,3 +58,23 @@ func (v *BaseSQLParserVisitor) VisitColumnInsertValues(ctx *ColumnInsertValuesCo
 func (v *BaseSQLParserVisitor) VisitColumnValue(ctx *ColumnValueContext) interface{} {
 	return v.VisitChildren(ctx)
 }
+
+func (v *BaseSQLParserVisitor) VisitSelectTableStatement(ctx *SelectTableStatementContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSQLParserVisitor) VisitSelectColumnNames(ctx *SelectColumnNamesContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSQLParserVisitor) VisitCondition(ctx *ConditionContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSQLParserVisitor) VisitComparisonCondition(ctx *ComparisonConditionContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSQLParserVisitor) VisitBetweenCondition(ctx *BetweenConditionContext) interface{} {
+	return v.VisitChildren(ctx)
+}

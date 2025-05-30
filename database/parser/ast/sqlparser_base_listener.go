@@ -97,3 +97,33 @@ func (s *BaseSQLParserListener) EnterColumnValue(ctx *ColumnValueContext) {}
 
 // ExitColumnValue is called when production columnValue is exited.
 func (s *BaseSQLParserListener) ExitColumnValue(ctx *ColumnValueContext) {}
+
+// EnterSelectTableStatement is called when production selectTableStatement is entered.
+func (s *BaseSQLParserListener) EnterSelectTableStatement(ctx *SelectTableStatementContext) {}
+
+// ExitSelectTableStatement is called when production selectTableStatement is exited.
+func (s *BaseSQLParserListener) ExitSelectTableStatement(ctx *SelectTableStatementContext) {}
+
+// EnterSelectColumnNames is called when production selectColumnNames is entered.
+func (s *BaseSQLParserListener) EnterSelectColumnNames(ctx *SelectColumnNamesContext) {}
+
+// ExitSelectColumnNames is called when production selectColumnNames is exited.
+func (s *BaseSQLParserListener) ExitSelectColumnNames(ctx *SelectColumnNamesContext) {}
+
+// EnterCondition is called when production condition is entered.
+func (s *BaseSQLParserListener) EnterCondition(ctx *ConditionContext) {}
+
+// ExitCondition is called when production condition is exited.
+func (s *BaseSQLParserListener) ExitCondition(ctx *ConditionContext) {}
+
+// EnterComparisonCondition is called when production comparisonCondition is entered.
+func (s *BaseSQLParserListener) EnterComparisonCondition(ctx *ComparisonConditionContext) {}
+
+// ExitComparisonCondition is called when production comparisonCondition is exited.
+func (s *BaseSQLParserListener) ExitComparisonCondition(ctx *ComparisonConditionContext) {}
+
+// EnterBetweenCondition is called when production betweenCondition is entered.
+func (s *BaseSQLParserListener) EnterBetweenCondition(ctx *BetweenConditionContext) {}
+
+// ExitBetweenCondition is called when production betweenCondition is exited.
+func (s *BaseSQLParserListener) ExitBetweenCondition(ctx *BetweenConditionContext) {}
