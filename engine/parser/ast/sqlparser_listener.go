@@ -49,6 +49,9 @@ type SQLParserListener interface {
 	// EnterSelectTableStatement is called when entering the selectTableStatement production.
 	EnterSelectTableStatement(c *SelectTableStatementContext)
 
+	// EnterConditions is called when entering the conditions production.
+	EnterConditions(c *ConditionsContext)
+
 	// EnterSelectColumnNames is called when entering the selectColumnNames production.
 	EnterSelectColumnNames(c *SelectColumnNamesContext)
 
@@ -60,6 +63,18 @@ type SQLParserListener interface {
 
 	// EnterBetweenCondition is called when entering the betweenCondition production.
 	EnterBetweenCondition(c *BetweenConditionContext)
+
+	// EnterUpdateTableStatement is called when entering the updateTableStatement production.
+	EnterUpdateTableStatement(c *UpdateTableStatementContext)
+
+	// EnterSetClauses is called when entering the setClauses production.
+	EnterSetClauses(c *SetClausesContext)
+
+	// EnterSetClause is called when entering the setClause production.
+	EnterSetClause(c *SetClauseContext)
+
+	// EnterDeleteTableStatement is called when entering the deleteTableStatement production.
+	EnterDeleteTableStatement(c *DeleteTableStatementContext)
 
 	// ExitSql is called when exiting the sql production.
 	ExitSql(c *SqlContext)
@@ -103,6 +118,9 @@ type SQLParserListener interface {
 	// ExitSelectTableStatement is called when exiting the selectTableStatement production.
 	ExitSelectTableStatement(c *SelectTableStatementContext)
 
+	// ExitConditions is called when exiting the conditions production.
+	ExitConditions(c *ConditionsContext)
+
 	// ExitSelectColumnNames is called when exiting the selectColumnNames production.
 	ExitSelectColumnNames(c *SelectColumnNamesContext)
 
@@ -114,4 +132,16 @@ type SQLParserListener interface {
 
 	// ExitBetweenCondition is called when exiting the betweenCondition production.
 	ExitBetweenCondition(c *BetweenConditionContext)
+
+	// ExitUpdateTableStatement is called when exiting the updateTableStatement production.
+	ExitUpdateTableStatement(c *UpdateTableStatementContext)
+
+	// ExitSetClauses is called when exiting the setClauses production.
+	ExitSetClauses(c *SetClausesContext)
+
+	// ExitSetClause is called when exiting the setClause production.
+	ExitSetClause(c *SetClauseContext)
+
+	// ExitDeleteTableStatement is called when exiting the deleteTableStatement production.
+	ExitDeleteTableStatement(c *DeleteTableStatementContext)
 }

@@ -33,89 +33,106 @@ func sqlparserParserInit() {
 	staticData := &SQLParserParserStaticData
 	staticData.LiteralNames = []string{
 		"", "'CREATE'", "'TABLE'", "'PRIMARY'", "'KEY'", "'INDEX'", "'INSERT'",
-		"'INTO'", "'VALUES'", "'SELECT'", "'FROM'", "'WHERE'", "'AND'", "'INT64'",
-		"'BYTES'", "'BETWEEN'", "", "'('", "')'", "','", "';'", "'*'",
+		"'INTO'", "'VALUES'", "'SELECT'", "'FROM'", "'WHERE'", "'AND'", "'DELETE'",
+		"'UPDATE'", "'SET'", "'INT64'", "'BYTES'", "'BETWEEN'", "", "'('", "')'",
+		"','", "';'", "'*'",
 	}
 	staticData.SymbolicNames = []string{
 		"", "CREATE", "TABLE", "PRIMARY", "KEY", "INDEX", "INSERT", "INTO",
-		"VALUES", "SELECT", "FROM", "WHERE", "AND", "INT64", "BYTES", "BETWEEN",
-		"IDENTIFIER", "LPAREN", "RPAREN", "COMMA", "SEMICOLON", "STAR", "WS",
-		"INTEGER", "STRING", "OP",
+		"VALUES", "SELECT", "FROM", "WHERE", "AND", "DELETE", "UPDATE", "SET",
+		"INT64", "BYTES", "BETWEEN", "IDENTIFIER", "LPAREN", "RPAREN", "COMMA",
+		"SEMICOLON", "STAR", "WS", "INTEGER", "STRING", "OP",
 	}
 	staticData.RuleNames = []string{
 		"sql", "createTableStatement", "tableName", "columnName", "columnType",
 		"columnDefinitions", "columnDefinition", "indexDefinitions", "indexDefinition",
 		"insertTableStatement", "columnInsertNames", "columnInsertValues", "columnValue",
-		"selectTableStatement", "selectColumnNames", "condition", "comparisonCondition",
-		"betweenCondition",
+		"selectTableStatement", "conditions", "selectColumnNames", "condition",
+		"comparisonCondition", "betweenCondition", "updateTableStatement", "setClauses",
+		"setClause", "deleteTableStatement",
 	}
 	staticData.PredictionContextCache = antlr.NewPredictionContextCache()
 	staticData.serializedATN = []int32{
-		4, 1, 25, 164, 2, 0, 7, 0, 2, 1, 7, 1, 2, 2, 7, 2, 2, 3, 7, 3, 2, 4, 7,
+		4, 1, 28, 201, 2, 0, 7, 0, 2, 1, 7, 1, 2, 2, 7, 2, 2, 3, 7, 3, 2, 4, 7,
 		4, 2, 5, 7, 5, 2, 6, 7, 6, 2, 7, 7, 7, 2, 8, 7, 8, 2, 9, 7, 9, 2, 10, 7,
 		10, 2, 11, 7, 11, 2, 12, 7, 12, 2, 13, 7, 13, 2, 14, 7, 14, 2, 15, 7, 15,
-		2, 16, 7, 16, 2, 17, 7, 17, 1, 0, 1, 0, 1, 0, 3, 0, 40, 8, 0, 1, 1, 1,
+		2, 16, 7, 16, 2, 17, 7, 17, 2, 18, 7, 18, 2, 19, 7, 19, 2, 20, 7, 20, 2,
+		21, 7, 21, 2, 22, 7, 22, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 3, 0, 52, 8, 0,
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-		1, 1, 1, 1, 1, 1, 2, 1, 2, 1, 3, 1, 3, 1, 4, 1, 4, 1, 5, 1, 5, 1, 5, 5,
-		5, 67, 8, 5, 10, 5, 12, 5, 70, 9, 5, 1, 6, 1, 6, 1, 6, 1, 7, 1, 7, 1, 7,
-		5, 7, 78, 8, 7, 10, 7, 12, 7, 81, 9, 7, 1, 8, 1, 8, 1, 8, 1, 8, 1, 8, 5,
-		8, 88, 8, 8, 10, 8, 12, 8, 91, 9, 8, 1, 8, 1, 8, 1, 9, 1, 9, 1, 9, 1, 9,
-		1, 9, 1, 9, 1, 9, 1, 9, 1, 9, 1, 9, 1, 9, 1, 10, 1, 10, 1, 10, 5, 10, 109,
-		8, 10, 10, 10, 12, 10, 112, 9, 10, 1, 11, 1, 11, 1, 11, 5, 11, 117, 8,
-		11, 10, 11, 12, 11, 120, 9, 11, 1, 12, 1, 12, 1, 13, 1, 13, 1, 13, 1, 13,
-		1, 13, 1, 13, 1, 13, 1, 13, 5, 13, 132, 8, 13, 10, 13, 12, 13, 135, 9,
-		13, 3, 13, 137, 8, 13, 1, 14, 1, 14, 1, 14, 1, 14, 5, 14, 143, 8, 14, 10,
-		14, 12, 14, 146, 9, 14, 3, 14, 148, 8, 14, 1, 15, 1, 15, 3, 15, 152, 8,
-		15, 1, 16, 1, 16, 1, 16, 1, 16, 1, 17, 1, 17, 1, 17, 1, 17, 1, 17, 1, 17,
-		1, 17, 0, 0, 18, 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28,
-		30, 32, 34, 0, 2, 1, 0, 13, 14, 1, 0, 23, 24, 157, 0, 39, 1, 0, 0, 0, 2,
-		41, 1, 0, 0, 0, 4, 57, 1, 0, 0, 0, 6, 59, 1, 0, 0, 0, 8, 61, 1, 0, 0, 0,
-		10, 63, 1, 0, 0, 0, 12, 71, 1, 0, 0, 0, 14, 74, 1, 0, 0, 0, 16, 82, 1,
-		0, 0, 0, 18, 94, 1, 0, 0, 0, 20, 105, 1, 0, 0, 0, 22, 113, 1, 0, 0, 0,
-		24, 121, 1, 0, 0, 0, 26, 123, 1, 0, 0, 0, 28, 147, 1, 0, 0, 0, 30, 151,
-		1, 0, 0, 0, 32, 153, 1, 0, 0, 0, 34, 157, 1, 0, 0, 0, 36, 40, 3, 2, 1,
-		0, 37, 40, 3, 18, 9, 0, 38, 40, 3, 26, 13, 0, 39, 36, 1, 0, 0, 0, 39, 37,
-		1, 0, 0, 0, 39, 38, 1, 0, 0, 0, 40, 1, 1, 0, 0, 0, 41, 42, 5, 1, 0, 0,
-		42, 43, 5, 2, 0, 0, 43, 44, 3, 4, 2, 0, 44, 45, 5, 17, 0, 0, 45, 46, 3,
-		10, 5, 0, 46, 47, 5, 19, 0, 0, 47, 48, 5, 3, 0, 0, 48, 49, 5, 4, 0, 0,
-		49, 50, 5, 17, 0, 0, 50, 51, 3, 6, 3, 0, 51, 52, 5, 18, 0, 0, 52, 53, 5,
-		19, 0, 0, 53, 54, 3, 14, 7, 0, 54, 55, 5, 18, 0, 0, 55, 56, 5, 20, 0, 0,
-		56, 3, 1, 0, 0, 0, 57, 58, 5, 16, 0, 0, 58, 5, 1, 0, 0, 0, 59, 60, 5, 16,
-		0, 0, 60, 7, 1, 0, 0, 0, 61, 62, 7, 0, 0, 0, 62, 9, 1, 0, 0, 0, 63, 68,
-		3, 12, 6, 0, 64, 65, 5, 19, 0, 0, 65, 67, 3, 12, 6, 0, 66, 64, 1, 0, 0,
-		0, 67, 70, 1, 0, 0, 0, 68, 66, 1, 0, 0, 0, 68, 69, 1, 0, 0, 0, 69, 11,
-		1, 0, 0, 0, 70, 68, 1, 0, 0, 0, 71, 72, 3, 6, 3, 0, 72, 73, 3, 8, 4, 0,
-		73, 13, 1, 0, 0, 0, 74, 79, 3, 16, 8, 0, 75, 76, 5, 19, 0, 0, 76, 78, 3,
-		16, 8, 0, 77, 75, 1, 0, 0, 0, 78, 81, 1, 0, 0, 0, 79, 77, 1, 0, 0, 0, 79,
-		80, 1, 0, 0, 0, 80, 15, 1, 0, 0, 0, 81, 79, 1, 0, 0, 0, 82, 83, 5, 5, 0,
-		0, 83, 84, 5, 17, 0, 0, 84, 89, 3, 6, 3, 0, 85, 86, 5, 19, 0, 0, 86, 88,
-		3, 6, 3, 0, 87, 85, 1, 0, 0, 0, 88, 91, 1, 0, 0, 0, 89, 87, 1, 0, 0, 0,
-		89, 90, 1, 0, 0, 0, 90, 92, 1, 0, 0, 0, 91, 89, 1, 0, 0, 0, 92, 93, 5,
-		18, 0, 0, 93, 17, 1, 0, 0, 0, 94, 95, 5, 6, 0, 0, 95, 96, 5, 7, 0, 0, 96,
-		97, 3, 4, 2, 0, 97, 98, 5, 17, 0, 0, 98, 99, 3, 20, 10, 0, 99, 100, 5,
-		18, 0, 0, 100, 101, 5, 8, 0, 0, 101, 102, 5, 17, 0, 0, 102, 103, 3, 22,
-		11, 0, 103, 104, 5, 18, 0, 0, 104, 19, 1, 0, 0, 0, 105, 110, 3, 6, 3, 0,
-		106, 107, 5, 19, 0, 0, 107, 109, 3, 6, 3, 0, 108, 106, 1, 0, 0, 0, 109,
-		112, 1, 0, 0, 0, 110, 108, 1, 0, 0, 0, 110, 111, 1, 0, 0, 0, 111, 21, 1,
-		0, 0, 0, 112, 110, 1, 0, 0, 0, 113, 118, 3, 24, 12, 0, 114, 115, 5, 19,
-		0, 0, 115, 117, 3, 24, 12, 0, 116, 114, 1, 0, 0, 0, 117, 120, 1, 0, 0,
-		0, 118, 116, 1, 0, 0, 0, 118, 119, 1, 0, 0, 0, 119, 23, 1, 0, 0, 0, 120,
-		118, 1, 0, 0, 0, 121, 122, 7, 1, 0, 0, 122, 25, 1, 0, 0, 0, 123, 124, 5,
-		9, 0, 0, 124, 125, 3, 28, 14, 0, 125, 126, 5, 10, 0, 0, 126, 136, 3, 4,
-		2, 0, 127, 128, 5, 11, 0, 0, 128, 133, 3, 30, 15, 0, 129, 130, 5, 12, 0,
-		0, 130, 132, 3, 30, 15, 0, 131, 129, 1, 0, 0, 0, 132, 135, 1, 0, 0, 0,
-		133, 131, 1, 0, 0, 0, 133, 134, 1, 0, 0, 0, 134, 137, 1, 0, 0, 0, 135,
-		133, 1, 0, 0, 0, 136, 127, 1, 0, 0, 0, 136, 137, 1, 0, 0, 0, 137, 27, 1,
-		0, 0, 0, 138, 148, 5, 21, 0, 0, 139, 144, 3, 6, 3, 0, 140, 141, 5, 19,
-		0, 0, 141, 143, 3, 6, 3, 0, 142, 140, 1, 0, 0, 0, 143, 146, 1, 0, 0, 0,
-		144, 142, 1, 0, 0, 0, 144, 145, 1, 0, 0, 0, 145, 148, 1, 0, 0, 0, 146,
-		144, 1, 0, 0, 0, 147, 138, 1, 0, 0, 0, 147, 139, 1, 0, 0, 0, 148, 29, 1,
-		0, 0, 0, 149, 152, 3, 32, 16, 0, 150, 152, 3, 34, 17, 0, 151, 149, 1, 0,
-		0, 0, 151, 150, 1, 0, 0, 0, 152, 31, 1, 0, 0, 0, 153, 154, 3, 6, 3, 0,
-		154, 155, 5, 25, 0, 0, 155, 156, 3, 24, 12, 0, 156, 33, 1, 0, 0, 0, 157,
-		158, 3, 6, 3, 0, 158, 159, 5, 15, 0, 0, 159, 160, 3, 24, 12, 0, 160, 161,
-		5, 12, 0, 0, 161, 162, 3, 24, 12, 0, 162, 35, 1, 0, 0, 0, 11, 39, 68, 79,
-		89, 110, 118, 133, 136, 144, 147, 151,
+		1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 1, 3, 1, 3, 1, 4, 1, 4, 1, 5, 1, 5,
+		1, 5, 5, 5, 79, 8, 5, 10, 5, 12, 5, 82, 9, 5, 1, 6, 1, 6, 1, 6, 1, 7, 1,
+		7, 1, 7, 5, 7, 90, 8, 7, 10, 7, 12, 7, 93, 9, 7, 1, 8, 1, 8, 1, 8, 1, 8,
+		1, 8, 5, 8, 100, 8, 8, 10, 8, 12, 8, 103, 9, 8, 1, 8, 1, 8, 1, 9, 1, 9,
+		1, 9, 1, 9, 1, 9, 1, 9, 1, 9, 1, 9, 1, 9, 1, 9, 1, 9, 1, 10, 1, 10, 1,
+		10, 5, 10, 121, 8, 10, 10, 10, 12, 10, 124, 9, 10, 1, 11, 1, 11, 1, 11,
+		5, 11, 129, 8, 11, 10, 11, 12, 11, 132, 9, 11, 1, 12, 1, 12, 1, 13, 1,
+		13, 1, 13, 1, 13, 1, 13, 1, 13, 1, 14, 1, 14, 1, 14, 1, 14, 5, 14, 146,
+		8, 14, 10, 14, 12, 14, 149, 9, 14, 3, 14, 151, 8, 14, 1, 15, 1, 15, 1,
+		15, 1, 15, 5, 15, 157, 8, 15, 10, 15, 12, 15, 160, 9, 15, 3, 15, 162, 8,
+		15, 1, 16, 1, 16, 3, 16, 166, 8, 16, 1, 17, 1, 17, 1, 17, 1, 17, 1, 18,
+		1, 18, 1, 18, 1, 18, 1, 18, 1, 18, 1, 19, 1, 19, 1, 19, 1, 19, 1, 19, 1,
+		19, 1, 20, 1, 20, 1, 20, 5, 20, 187, 8, 20, 10, 20, 12, 20, 190, 9, 20,
+		1, 21, 1, 21, 1, 21, 1, 21, 1, 22, 1, 22, 1, 22, 1, 22, 1, 22, 1, 22, 0,
+		0, 23, 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34,
+		36, 38, 40, 42, 44, 0, 2, 1, 0, 16, 17, 1, 0, 26, 27, 192, 0, 51, 1, 0,
+		0, 0, 2, 53, 1, 0, 0, 0, 4, 69, 1, 0, 0, 0, 6, 71, 1, 0, 0, 0, 8, 73, 1,
+		0, 0, 0, 10, 75, 1, 0, 0, 0, 12, 83, 1, 0, 0, 0, 14, 86, 1, 0, 0, 0, 16,
+		94, 1, 0, 0, 0, 18, 106, 1, 0, 0, 0, 20, 117, 1, 0, 0, 0, 22, 125, 1, 0,
+		0, 0, 24, 133, 1, 0, 0, 0, 26, 135, 1, 0, 0, 0, 28, 150, 1, 0, 0, 0, 30,
+		161, 1, 0, 0, 0, 32, 165, 1, 0, 0, 0, 34, 167, 1, 0, 0, 0, 36, 171, 1,
+		0, 0, 0, 38, 177, 1, 0, 0, 0, 40, 183, 1, 0, 0, 0, 42, 191, 1, 0, 0, 0,
+		44, 195, 1, 0, 0, 0, 46, 52, 3, 2, 1, 0, 47, 52, 3, 18, 9, 0, 48, 52, 3,
+		26, 13, 0, 49, 52, 3, 38, 19, 0, 50, 52, 3, 44, 22, 0, 51, 46, 1, 0, 0,
+		0, 51, 47, 1, 0, 0, 0, 51, 48, 1, 0, 0, 0, 51, 49, 1, 0, 0, 0, 51, 50,
+		1, 0, 0, 0, 52, 1, 1, 0, 0, 0, 53, 54, 5, 1, 0, 0, 54, 55, 5, 2, 0, 0,
+		55, 56, 3, 4, 2, 0, 56, 57, 5, 20, 0, 0, 57, 58, 3, 10, 5, 0, 58, 59, 5,
+		22, 0, 0, 59, 60, 5, 3, 0, 0, 60, 61, 5, 4, 0, 0, 61, 62, 5, 20, 0, 0,
+		62, 63, 3, 6, 3, 0, 63, 64, 5, 21, 0, 0, 64, 65, 5, 22, 0, 0, 65, 66, 3,
+		14, 7, 0, 66, 67, 5, 21, 0, 0, 67, 68, 5, 23, 0, 0, 68, 3, 1, 0, 0, 0,
+		69, 70, 5, 19, 0, 0, 70, 5, 1, 0, 0, 0, 71, 72, 5, 19, 0, 0, 72, 7, 1,
+		0, 0, 0, 73, 74, 7, 0, 0, 0, 74, 9, 1, 0, 0, 0, 75, 80, 3, 12, 6, 0, 76,
+		77, 5, 22, 0, 0, 77, 79, 3, 12, 6, 0, 78, 76, 1, 0, 0, 0, 79, 82, 1, 0,
+		0, 0, 80, 78, 1, 0, 0, 0, 80, 81, 1, 0, 0, 0, 81, 11, 1, 0, 0, 0, 82, 80,
+		1, 0, 0, 0, 83, 84, 3, 6, 3, 0, 84, 85, 3, 8, 4, 0, 85, 13, 1, 0, 0, 0,
+		86, 91, 3, 16, 8, 0, 87, 88, 5, 22, 0, 0, 88, 90, 3, 16, 8, 0, 89, 87,
+		1, 0, 0, 0, 90, 93, 1, 0, 0, 0, 91, 89, 1, 0, 0, 0, 91, 92, 1, 0, 0, 0,
+		92, 15, 1, 0, 0, 0, 93, 91, 1, 0, 0, 0, 94, 95, 5, 5, 0, 0, 95, 96, 5,
+		20, 0, 0, 96, 101, 3, 6, 3, 0, 97, 98, 5, 22, 0, 0, 98, 100, 3, 6, 3, 0,
+		99, 97, 1, 0, 0, 0, 100, 103, 1, 0, 0, 0, 101, 99, 1, 0, 0, 0, 101, 102,
+		1, 0, 0, 0, 102, 104, 1, 0, 0, 0, 103, 101, 1, 0, 0, 0, 104, 105, 5, 21,
+		0, 0, 105, 17, 1, 0, 0, 0, 106, 107, 5, 6, 0, 0, 107, 108, 5, 7, 0, 0,
+		108, 109, 3, 4, 2, 0, 109, 110, 5, 20, 0, 0, 110, 111, 3, 20, 10, 0, 111,
+		112, 5, 21, 0, 0, 112, 113, 5, 8, 0, 0, 113, 114, 5, 20, 0, 0, 114, 115,
+		3, 22, 11, 0, 115, 116, 5, 21, 0, 0, 116, 19, 1, 0, 0, 0, 117, 122, 3,
+		6, 3, 0, 118, 119, 5, 22, 0, 0, 119, 121, 3, 6, 3, 0, 120, 118, 1, 0, 0,
+		0, 121, 124, 1, 0, 0, 0, 122, 120, 1, 0, 0, 0, 122, 123, 1, 0, 0, 0, 123,
+		21, 1, 0, 0, 0, 124, 122, 1, 0, 0, 0, 125, 130, 3, 24, 12, 0, 126, 127,
+		5, 22, 0, 0, 127, 129, 3, 24, 12, 0, 128, 126, 1, 0, 0, 0, 129, 132, 1,
+		0, 0, 0, 130, 128, 1, 0, 0, 0, 130, 131, 1, 0, 0, 0, 131, 23, 1, 0, 0,
+		0, 132, 130, 1, 0, 0, 0, 133, 134, 7, 1, 0, 0, 134, 25, 1, 0, 0, 0, 135,
+		136, 5, 9, 0, 0, 136, 137, 3, 30, 15, 0, 137, 138, 5, 10, 0, 0, 138, 139,
+		3, 4, 2, 0, 139, 140, 3, 28, 14, 0, 140, 27, 1, 0, 0, 0, 141, 142, 5, 11,
+		0, 0, 142, 147, 3, 32, 16, 0, 143, 144, 5, 12, 0, 0, 144, 146, 3, 32, 16,
+		0, 145, 143, 1, 0, 0, 0, 146, 149, 1, 0, 0, 0, 147, 145, 1, 0, 0, 0, 147,
+		148, 1, 0, 0, 0, 148, 151, 1, 0, 0, 0, 149, 147, 1, 0, 0, 0, 150, 141,
+		1, 0, 0, 0, 150, 151, 1, 0, 0, 0, 151, 29, 1, 0, 0, 0, 152, 162, 5, 24,
+		0, 0, 153, 158, 3, 6, 3, 0, 154, 155, 5, 22, 0, 0, 155, 157, 3, 6, 3, 0,
+		156, 154, 1, 0, 0, 0, 157, 160, 1, 0, 0, 0, 158, 156, 1, 0, 0, 0, 158,
+		159, 1, 0, 0, 0, 159, 162, 1, 0, 0, 0, 160, 158, 1, 0, 0, 0, 161, 152,
+		1, 0, 0, 0, 161, 153, 1, 0, 0, 0, 162, 31, 1, 0, 0, 0, 163, 166, 3, 34,
+		17, 0, 164, 166, 3, 36, 18, 0, 165, 163, 1, 0, 0, 0, 165, 164, 1, 0, 0,
+		0, 166, 33, 1, 0, 0, 0, 167, 168, 3, 6, 3, 0, 168, 169, 5, 28, 0, 0, 169,
+		170, 3, 24, 12, 0, 170, 35, 1, 0, 0, 0, 171, 172, 3, 6, 3, 0, 172, 173,
+		5, 18, 0, 0, 173, 174, 3, 24, 12, 0, 174, 175, 5, 12, 0, 0, 175, 176, 3,
+		24, 12, 0, 176, 37, 1, 0, 0, 0, 177, 178, 5, 14, 0, 0, 178, 179, 3, 4,
+		2, 0, 179, 180, 5, 15, 0, 0, 180, 181, 3, 40, 20, 0, 181, 182, 3, 28, 14,
+		0, 182, 39, 1, 0, 0, 0, 183, 188, 3, 42, 21, 0, 184, 185, 5, 22, 0, 0,
+		185, 187, 3, 42, 21, 0, 186, 184, 1, 0, 0, 0, 187, 190, 1, 0, 0, 0, 188,
+		186, 1, 0, 0, 0, 188, 189, 1, 0, 0, 0, 189, 41, 1, 0, 0, 0, 190, 188, 1,
+		0, 0, 0, 191, 192, 3, 6, 3, 0, 192, 193, 5, 28, 0, 0, 193, 194, 3, 24,
+		12, 0, 194, 43, 1, 0, 0, 0, 195, 196, 5, 13, 0, 0, 196, 197, 5, 10, 0,
+		0, 197, 198, 3, 4, 2, 0, 198, 199, 3, 28, 14, 0, 199, 45, 1, 0, 0, 0, 12,
+		51, 80, 91, 101, 122, 130, 147, 150, 158, 161, 165, 188,
 	}
 	deserializer := antlr.NewATNDeserializer(nil)
 	staticData.atn = deserializer.Deserialize(staticData.serializedATN)
@@ -166,19 +183,22 @@ const (
 	SQLParserFROM       = 10
 	SQLParserWHERE      = 11
 	SQLParserAND        = 12
-	SQLParserINT64      = 13
-	SQLParserBYTES      = 14
-	SQLParserBETWEEN    = 15
-	SQLParserIDENTIFIER = 16
-	SQLParserLPAREN     = 17
-	SQLParserRPAREN     = 18
-	SQLParserCOMMA      = 19
-	SQLParserSEMICOLON  = 20
-	SQLParserSTAR       = 21
-	SQLParserWS         = 22
-	SQLParserINTEGER    = 23
-	SQLParserSTRING     = 24
-	SQLParserOP         = 25
+	SQLParserDELETE     = 13
+	SQLParserUPDATE     = 14
+	SQLParserSET        = 15
+	SQLParserINT64      = 16
+	SQLParserBYTES      = 17
+	SQLParserBETWEEN    = 18
+	SQLParserIDENTIFIER = 19
+	SQLParserLPAREN     = 20
+	SQLParserRPAREN     = 21
+	SQLParserCOMMA      = 22
+	SQLParserSEMICOLON  = 23
+	SQLParserSTAR       = 24
+	SQLParserWS         = 25
+	SQLParserINTEGER    = 26
+	SQLParserSTRING     = 27
+	SQLParserOP         = 28
 )
 
 // SQLParser rules.
@@ -197,10 +217,15 @@ const (
 	SQLParserRULE_columnInsertValues   = 11
 	SQLParserRULE_columnValue          = 12
 	SQLParserRULE_selectTableStatement = 13
-	SQLParserRULE_selectColumnNames    = 14
-	SQLParserRULE_condition            = 15
-	SQLParserRULE_comparisonCondition  = 16
-	SQLParserRULE_betweenCondition     = 17
+	SQLParserRULE_conditions           = 14
+	SQLParserRULE_selectColumnNames    = 15
+	SQLParserRULE_condition            = 16
+	SQLParserRULE_comparisonCondition  = 17
+	SQLParserRULE_betweenCondition     = 18
+	SQLParserRULE_updateTableStatement = 19
+	SQLParserRULE_setClauses           = 20
+	SQLParserRULE_setClause            = 21
+	SQLParserRULE_deleteTableStatement = 22
 )
 
 // ISqlContext is an interface to support dynamic dispatch.
@@ -214,6 +239,8 @@ type ISqlContext interface {
 	CreateTableStatement() ICreateTableStatementContext
 	InsertTableStatement() IInsertTableStatementContext
 	SelectTableStatement() ISelectTableStatementContext
+	UpdateTableStatement() IUpdateTableStatementContext
+	DeleteTableStatement() IDeleteTableStatementContext
 
 	// IsSqlContext differentiates from other interfaces.
 	IsSqlContext()
@@ -299,6 +326,38 @@ func (s *SqlContext) SelectTableStatement() ISelectTableStatementContext {
 	return t.(ISelectTableStatementContext)
 }
 
+func (s *SqlContext) UpdateTableStatement() IUpdateTableStatementContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IUpdateTableStatementContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IUpdateTableStatementContext)
+}
+
+func (s *SqlContext) DeleteTableStatement() IDeleteTableStatementContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IDeleteTableStatementContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IDeleteTableStatementContext)
+}
+
 func (s *SqlContext) GetRuleContext() antlr.RuleContext {
 	return s
 }
@@ -332,7 +391,7 @@ func (s *SqlContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 func (p *SQLParser) Sql() (localctx ISqlContext) {
 	localctx = NewSqlContext(p, p.GetParserRuleContext(), p.GetState())
 	p.EnterRule(localctx, 0, SQLParserRULE_sql)
-	p.SetState(39)
+	p.SetState(51)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -342,22 +401,36 @@ func (p *SQLParser) Sql() (localctx ISqlContext) {
 	case SQLParserCREATE:
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(36)
+			p.SetState(46)
 			p.CreateTableStatement()
 		}
 
 	case SQLParserINSERT:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(37)
+			p.SetState(47)
 			p.InsertTableStatement()
 		}
 
 	case SQLParserSELECT:
 		p.EnterOuterAlt(localctx, 3)
 		{
-			p.SetState(38)
+			p.SetState(48)
 			p.SelectTableStatement()
+		}
+
+	case SQLParserUPDATE:
+		p.EnterOuterAlt(localctx, 4)
+		{
+			p.SetState(49)
+			p.UpdateTableStatement()
+		}
+
+	case SQLParserDELETE:
+		p.EnterOuterAlt(localctx, 5)
+		{
+			p.SetState(50)
+			p.DeleteTableStatement()
 		}
 
 	default:
@@ -581,7 +654,7 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 	p.EnterRule(localctx, 2, SQLParserRULE_createTableStatement)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(41)
+		p.SetState(53)
 		p.Match(SQLParserCREATE)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -589,7 +662,7 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(42)
+		p.SetState(54)
 		p.Match(SQLParserTABLE)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -597,11 +670,11 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(43)
+		p.SetState(55)
 		p.TableName()
 	}
 	{
-		p.SetState(44)
+		p.SetState(56)
 		p.Match(SQLParserLPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -609,11 +682,11 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(45)
+		p.SetState(57)
 		p.ColumnDefinitions()
 	}
 	{
-		p.SetState(46)
+		p.SetState(58)
 		p.Match(SQLParserCOMMA)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -621,7 +694,7 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(47)
+		p.SetState(59)
 		p.Match(SQLParserPRIMARY)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -629,7 +702,7 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(48)
+		p.SetState(60)
 		p.Match(SQLParserKEY)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -637,7 +710,7 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(49)
+		p.SetState(61)
 		p.Match(SQLParserLPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -645,11 +718,11 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(50)
+		p.SetState(62)
 		p.ColumnName()
 	}
 	{
-		p.SetState(51)
+		p.SetState(63)
 		p.Match(SQLParserRPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -657,7 +730,7 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(52)
+		p.SetState(64)
 		p.Match(SQLParserCOMMA)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -665,11 +738,11 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(53)
+		p.SetState(65)
 		p.IndexDefinitions()
 	}
 	{
-		p.SetState(54)
+		p.SetState(66)
 		p.Match(SQLParserRPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -677,7 +750,7 @@ func (p *SQLParser) CreateTableStatement() (localctx ICreateTableStatementContex
 		}
 	}
 	{
-		p.SetState(55)
+		p.SetState(67)
 		p.Match(SQLParserSEMICOLON)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -783,7 +856,7 @@ func (p *SQLParser) TableName() (localctx ITableNameContext) {
 	p.EnterRule(localctx, 4, SQLParserRULE_tableName)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(57)
+		p.SetState(69)
 		p.Match(SQLParserIDENTIFIER)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -889,7 +962,7 @@ func (p *SQLParser) ColumnName() (localctx IColumnNameContext) {
 	p.EnterRule(localctx, 6, SQLParserRULE_columnName)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(59)
+		p.SetState(71)
 		p.Match(SQLParserIDENTIFIER)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1002,7 +1075,7 @@ func (p *SQLParser) ColumnType() (localctx IColumnTypeContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(61)
+		p.SetState(73)
 		_la = p.GetTokenStream().LA(1)
 
 		if !(_la == SQLParserINT64 || _la == SQLParserBYTES) {
@@ -1161,10 +1234,10 @@ func (p *SQLParser) ColumnDefinitions() (localctx IColumnDefinitionsContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(63)
+		p.SetState(75)
 		p.ColumnDefinition()
 	}
-	p.SetState(68)
+	p.SetState(80)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -1176,7 +1249,7 @@ func (p *SQLParser) ColumnDefinitions() (localctx IColumnDefinitionsContext) {
 	for _alt != 2 && _alt != antlr.ATNInvalidAltNumber {
 		if _alt == 1 {
 			{
-				p.SetState(64)
+				p.SetState(76)
 				p.Match(SQLParserCOMMA)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -1184,12 +1257,12 @@ func (p *SQLParser) ColumnDefinitions() (localctx IColumnDefinitionsContext) {
 				}
 			}
 			{
-				p.SetState(65)
+				p.SetState(77)
 				p.ColumnDefinition()
 			}
 
 		}
-		p.SetState(70)
+		p.SetState(82)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -1327,11 +1400,11 @@ func (p *SQLParser) ColumnDefinition() (localctx IColumnDefinitionContext) {
 	p.EnterRule(localctx, 12, SQLParserRULE_columnDefinition)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(71)
+		p.SetState(83)
 		p.ColumnName()
 	}
 	{
-		p.SetState(72)
+		p.SetState(84)
 		p.ColumnType()
 	}
 
@@ -1483,10 +1556,10 @@ func (p *SQLParser) IndexDefinitions() (localctx IIndexDefinitionsContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(74)
+		p.SetState(86)
 		p.IndexDefinition()
 	}
-	p.SetState(79)
+	p.SetState(91)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -1495,7 +1568,7 @@ func (p *SQLParser) IndexDefinitions() (localctx IIndexDefinitionsContext) {
 
 	for _la == SQLParserCOMMA {
 		{
-			p.SetState(75)
+			p.SetState(87)
 			p.Match(SQLParserCOMMA)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1503,11 +1576,11 @@ func (p *SQLParser) IndexDefinitions() (localctx IIndexDefinitionsContext) {
 			}
 		}
 		{
-			p.SetState(76)
+			p.SetState(88)
 			p.IndexDefinition()
 		}
 
-		p.SetState(81)
+		p.SetState(93)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -1678,7 +1751,7 @@ func (p *SQLParser) IndexDefinition() (localctx IIndexDefinitionContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(82)
+		p.SetState(94)
 		p.Match(SQLParserINDEX)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1686,7 +1759,7 @@ func (p *SQLParser) IndexDefinition() (localctx IIndexDefinitionContext) {
 		}
 	}
 	{
-		p.SetState(83)
+		p.SetState(95)
 		p.Match(SQLParserLPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1694,10 +1767,10 @@ func (p *SQLParser) IndexDefinition() (localctx IIndexDefinitionContext) {
 		}
 	}
 	{
-		p.SetState(84)
+		p.SetState(96)
 		p.ColumnName()
 	}
-	p.SetState(89)
+	p.SetState(101)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -1706,7 +1779,7 @@ func (p *SQLParser) IndexDefinition() (localctx IIndexDefinitionContext) {
 
 	for _la == SQLParserCOMMA {
 		{
-			p.SetState(85)
+			p.SetState(97)
 			p.Match(SQLParserCOMMA)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -1714,11 +1787,11 @@ func (p *SQLParser) IndexDefinition() (localctx IIndexDefinitionContext) {
 			}
 		}
 		{
-			p.SetState(86)
+			p.SetState(98)
 			p.ColumnName()
 		}
 
-		p.SetState(91)
+		p.SetState(103)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -1726,7 +1799,7 @@ func (p *SQLParser) IndexDefinition() (localctx IIndexDefinitionContext) {
 		_la = p.GetTokenStream().LA(1)
 	}
 	{
-		p.SetState(92)
+		p.SetState(104)
 		p.Match(SQLParserRPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1913,7 +1986,7 @@ func (p *SQLParser) InsertTableStatement() (localctx IInsertTableStatementContex
 	p.EnterRule(localctx, 18, SQLParserRULE_insertTableStatement)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(94)
+		p.SetState(106)
 		p.Match(SQLParserINSERT)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1921,7 +1994,7 @@ func (p *SQLParser) InsertTableStatement() (localctx IInsertTableStatementContex
 		}
 	}
 	{
-		p.SetState(95)
+		p.SetState(107)
 		p.Match(SQLParserINTO)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1929,11 +2002,11 @@ func (p *SQLParser) InsertTableStatement() (localctx IInsertTableStatementContex
 		}
 	}
 	{
-		p.SetState(96)
+		p.SetState(108)
 		p.TableName()
 	}
 	{
-		p.SetState(97)
+		p.SetState(109)
 		p.Match(SQLParserLPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1941,11 +2014,11 @@ func (p *SQLParser) InsertTableStatement() (localctx IInsertTableStatementContex
 		}
 	}
 	{
-		p.SetState(98)
+		p.SetState(110)
 		p.ColumnInsertNames()
 	}
 	{
-		p.SetState(99)
+		p.SetState(111)
 		p.Match(SQLParserRPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1953,7 +2026,7 @@ func (p *SQLParser) InsertTableStatement() (localctx IInsertTableStatementContex
 		}
 	}
 	{
-		p.SetState(100)
+		p.SetState(112)
 		p.Match(SQLParserVALUES)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1961,7 +2034,7 @@ func (p *SQLParser) InsertTableStatement() (localctx IInsertTableStatementContex
 		}
 	}
 	{
-		p.SetState(101)
+		p.SetState(113)
 		p.Match(SQLParserLPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -1969,11 +2042,11 @@ func (p *SQLParser) InsertTableStatement() (localctx IInsertTableStatementContex
 		}
 	}
 	{
-		p.SetState(102)
+		p.SetState(114)
 		p.ColumnInsertValues()
 	}
 	{
-		p.SetState(103)
+		p.SetState(115)
 		p.Match(SQLParserRPAREN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -2129,10 +2202,10 @@ func (p *SQLParser) ColumnInsertNames() (localctx IColumnInsertNamesContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(105)
+		p.SetState(117)
 		p.ColumnName()
 	}
-	p.SetState(110)
+	p.SetState(122)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2141,7 +2214,7 @@ func (p *SQLParser) ColumnInsertNames() (localctx IColumnInsertNamesContext) {
 
 	for _la == SQLParserCOMMA {
 		{
-			p.SetState(106)
+			p.SetState(118)
 			p.Match(SQLParserCOMMA)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2149,11 +2222,11 @@ func (p *SQLParser) ColumnInsertNames() (localctx IColumnInsertNamesContext) {
 			}
 		}
 		{
-			p.SetState(107)
+			p.SetState(119)
 			p.ColumnName()
 		}
 
-		p.SetState(112)
+		p.SetState(124)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -2309,10 +2382,10 @@ func (p *SQLParser) ColumnInsertValues() (localctx IColumnInsertValuesContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(113)
+		p.SetState(125)
 		p.ColumnValue()
 	}
-	p.SetState(118)
+	p.SetState(130)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2321,7 +2394,7 @@ func (p *SQLParser) ColumnInsertValues() (localctx IColumnInsertValuesContext) {
 
 	for _la == SQLParserCOMMA {
 		{
-			p.SetState(114)
+			p.SetState(126)
 			p.Match(SQLParserCOMMA)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2329,11 +2402,11 @@ func (p *SQLParser) ColumnInsertValues() (localctx IColumnInsertValuesContext) {
 			}
 		}
 		{
-			p.SetState(115)
+			p.SetState(127)
 			p.ColumnValue()
 		}
 
-		p.SetState(120)
+		p.SetState(132)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -2446,7 +2519,7 @@ func (p *SQLParser) ColumnValue() (localctx IColumnValueContext) {
 
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(121)
+		p.SetState(133)
 		_la = p.GetTokenStream().LA(1)
 
 		if !(_la == SQLParserINTEGER || _la == SQLParserSTRING) {
@@ -2482,11 +2555,7 @@ type ISelectTableStatementContext interface {
 	SelectColumnNames() ISelectColumnNamesContext
 	FROM() antlr.TerminalNode
 	TableName() ITableNameContext
-	WHERE() antlr.TerminalNode
-	AllCondition() []IConditionContext
-	Condition(i int) IConditionContext
-	AllAND() []antlr.TerminalNode
-	AND(i int) antlr.TerminalNode
+	Conditions() IConditionsContext
 
 	// IsSelectTableStatementContext differentiates from other interfaces.
 	IsSelectTableStatementContext()
@@ -2564,41 +2633,12 @@ func (s *SelectTableStatementContext) TableName() ITableNameContext {
 	return t.(ITableNameContext)
 }
 
-func (s *SelectTableStatementContext) WHERE() antlr.TerminalNode {
-	return s.GetToken(SQLParserWHERE, 0)
-}
-
-func (s *SelectTableStatementContext) AllCondition() []IConditionContext {
-	children := s.GetChildren()
-	len := 0
-	for _, ctx := range children {
-		if _, ok := ctx.(IConditionContext); ok {
-			len++
-		}
-	}
-
-	tst := make([]IConditionContext, len)
-	i := 0
-	for _, ctx := range children {
-		if t, ok := ctx.(IConditionContext); ok {
-			tst[i] = t.(IConditionContext)
-			i++
-		}
-	}
-
-	return tst
-}
-
-func (s *SelectTableStatementContext) Condition(i int) IConditionContext {
+func (s *SelectTableStatementContext) Conditions() IConditionsContext {
 	var t antlr.RuleContext
-	j := 0
 	for _, ctx := range s.GetChildren() {
-		if _, ok := ctx.(IConditionContext); ok {
-			if j == i {
-				t = ctx.(antlr.RuleContext)
-				break
-			}
-			j++
+		if _, ok := ctx.(IConditionsContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
 		}
 	}
 
@@ -2606,15 +2646,7 @@ func (s *SelectTableStatementContext) Condition(i int) IConditionContext {
 		return nil
 	}
 
-	return t.(IConditionContext)
-}
-
-func (s *SelectTableStatementContext) AllAND() []antlr.TerminalNode {
-	return s.GetTokens(SQLParserAND)
-}
-
-func (s *SelectTableStatementContext) AND(i int) antlr.TerminalNode {
-	return s.GetToken(SQLParserAND, i)
+	return t.(IConditionsContext)
 }
 
 func (s *SelectTableStatementContext) GetRuleContext() antlr.RuleContext {
@@ -2650,11 +2682,9 @@ func (s *SelectTableStatementContext) Accept(visitor antlr.ParseTreeVisitor) int
 func (p *SQLParser) SelectTableStatement() (localctx ISelectTableStatementContext) {
 	localctx = NewSelectTableStatementContext(p, p.GetParserRuleContext(), p.GetState())
 	p.EnterRule(localctx, 26, SQLParserRULE_selectTableStatement)
-	var _la int
-
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(123)
+		p.SetState(135)
 		p.Match(SQLParserSELECT)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -2662,11 +2692,11 @@ func (p *SQLParser) SelectTableStatement() (localctx ISelectTableStatementContex
 		}
 	}
 	{
-		p.SetState(124)
+		p.SetState(136)
 		p.SelectColumnNames()
 	}
 	{
-		p.SetState(125)
+		p.SetState(137)
 		p.Match(SQLParserFROM)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -2674,10 +2704,167 @@ func (p *SQLParser) SelectTableStatement() (localctx ISelectTableStatementContex
 		}
 	}
 	{
-		p.SetState(126)
+		p.SetState(138)
 		p.TableName()
 	}
-	p.SetState(136)
+	{
+		p.SetState(139)
+		p.Conditions()
+	}
+
+errorExit:
+	if p.HasError() {
+		v := p.GetError()
+		localctx.SetException(v)
+		p.GetErrorHandler().ReportError(p, v)
+		p.GetErrorHandler().Recover(p, v)
+		p.SetError(nil)
+	}
+	p.ExitRule()
+	return localctx
+	goto errorExit // Trick to prevent compiler error if the label is not used
+}
+
+// IConditionsContext is an interface to support dynamic dispatch.
+type IConditionsContext interface {
+	antlr.ParserRuleContext
+
+	// GetParser returns the parser.
+	GetParser() antlr.Parser
+
+	// Getter signatures
+	WHERE() antlr.TerminalNode
+	AllCondition() []IConditionContext
+	Condition(i int) IConditionContext
+	AllAND() []antlr.TerminalNode
+	AND(i int) antlr.TerminalNode
+
+	// IsConditionsContext differentiates from other interfaces.
+	IsConditionsContext()
+}
+
+type ConditionsContext struct {
+	antlr.BaseParserRuleContext
+	parser antlr.Parser
+}
+
+func NewEmptyConditionsContext() *ConditionsContext {
+	var p = new(ConditionsContext)
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_conditions
+	return p
+}
+
+func InitEmptyConditionsContext(p *ConditionsContext) {
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_conditions
+}
+
+func (*ConditionsContext) IsConditionsContext() {}
+
+func NewConditionsContext(parser antlr.Parser, parent antlr.ParserRuleContext, invokingState int) *ConditionsContext {
+	var p = new(ConditionsContext)
+
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, parent, invokingState)
+
+	p.parser = parser
+	p.RuleIndex = SQLParserRULE_conditions
+
+	return p
+}
+
+func (s *ConditionsContext) GetParser() antlr.Parser { return s.parser }
+
+func (s *ConditionsContext) WHERE() antlr.TerminalNode {
+	return s.GetToken(SQLParserWHERE, 0)
+}
+
+func (s *ConditionsContext) AllCondition() []IConditionContext {
+	children := s.GetChildren()
+	len := 0
+	for _, ctx := range children {
+		if _, ok := ctx.(IConditionContext); ok {
+			len++
+		}
+	}
+
+	tst := make([]IConditionContext, len)
+	i := 0
+	for _, ctx := range children {
+		if t, ok := ctx.(IConditionContext); ok {
+			tst[i] = t.(IConditionContext)
+			i++
+		}
+	}
+
+	return tst
+}
+
+func (s *ConditionsContext) Condition(i int) IConditionContext {
+	var t antlr.RuleContext
+	j := 0
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IConditionContext); ok {
+			if j == i {
+				t = ctx.(antlr.RuleContext)
+				break
+			}
+			j++
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IConditionContext)
+}
+
+func (s *ConditionsContext) AllAND() []antlr.TerminalNode {
+	return s.GetTokens(SQLParserAND)
+}
+
+func (s *ConditionsContext) AND(i int) antlr.TerminalNode {
+	return s.GetToken(SQLParserAND, i)
+}
+
+func (s *ConditionsContext) GetRuleContext() antlr.RuleContext {
+	return s
+}
+
+func (s *ConditionsContext) ToStringTree(ruleNames []string, recog antlr.Recognizer) string {
+	return antlr.TreesStringTree(s, ruleNames, recog)
+}
+
+func (s *ConditionsContext) EnterRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.EnterConditions(s)
+	}
+}
+
+func (s *ConditionsContext) ExitRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.ExitConditions(s)
+	}
+}
+
+func (s *ConditionsContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
+	switch t := visitor.(type) {
+	case SQLParserVisitor:
+		return t.VisitConditions(s)
+
+	default:
+		return t.VisitChildren(s)
+	}
+}
+
+func (p *SQLParser) Conditions() (localctx IConditionsContext) {
+	localctx = NewConditionsContext(p, p.GetParserRuleContext(), p.GetState())
+	p.EnterRule(localctx, 28, SQLParserRULE_conditions)
+	var _la int
+
+	p.EnterOuterAlt(localctx, 1)
+	p.SetState(150)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2686,7 +2873,7 @@ func (p *SQLParser) SelectTableStatement() (localctx ISelectTableStatementContex
 
 	if _la == SQLParserWHERE {
 		{
-			p.SetState(127)
+			p.SetState(141)
 			p.Match(SQLParserWHERE)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2694,10 +2881,10 @@ func (p *SQLParser) SelectTableStatement() (localctx ISelectTableStatementContex
 			}
 		}
 		{
-			p.SetState(128)
+			p.SetState(142)
 			p.Condition()
 		}
-		p.SetState(133)
+		p.SetState(147)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -2706,7 +2893,7 @@ func (p *SQLParser) SelectTableStatement() (localctx ISelectTableStatementContex
 
 		for _la == SQLParserAND {
 			{
-				p.SetState(129)
+				p.SetState(143)
 				p.Match(SQLParserAND)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -2714,11 +2901,11 @@ func (p *SQLParser) SelectTableStatement() (localctx ISelectTableStatementContex
 				}
 			}
 			{
-				p.SetState(130)
+				p.SetState(144)
 				p.Condition()
 			}
 
-			p.SetState(135)
+			p.SetState(149)
 			p.GetErrorHandler().Sync(p)
 			if p.HasError() {
 				goto errorExit
@@ -2876,10 +3063,10 @@ func (s *SelectColumnNamesContext) Accept(visitor antlr.ParseTreeVisitor) interf
 
 func (p *SQLParser) SelectColumnNames() (localctx ISelectColumnNamesContext) {
 	localctx = NewSelectColumnNamesContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 28, SQLParserRULE_selectColumnNames)
+	p.EnterRule(localctx, 30, SQLParserRULE_selectColumnNames)
 	var _la int
 
-	p.SetState(147)
+	p.SetState(161)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -2889,7 +3076,7 @@ func (p *SQLParser) SelectColumnNames() (localctx ISelectColumnNamesContext) {
 	case SQLParserSTAR:
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(138)
+			p.SetState(152)
 			p.Match(SQLParserSTAR)
 			if p.HasError() {
 				// Recognition error - abort rule
@@ -2900,10 +3087,10 @@ func (p *SQLParser) SelectColumnNames() (localctx ISelectColumnNamesContext) {
 	case SQLParserIDENTIFIER:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(139)
+			p.SetState(153)
 			p.ColumnName()
 		}
-		p.SetState(144)
+		p.SetState(158)
 		p.GetErrorHandler().Sync(p)
 		if p.HasError() {
 			goto errorExit
@@ -2912,7 +3099,7 @@ func (p *SQLParser) SelectColumnNames() (localctx ISelectColumnNamesContext) {
 
 		for _la == SQLParserCOMMA {
 			{
-				p.SetState(140)
+				p.SetState(154)
 				p.Match(SQLParserCOMMA)
 				if p.HasError() {
 					// Recognition error - abort rule
@@ -2920,11 +3107,11 @@ func (p *SQLParser) SelectColumnNames() (localctx ISelectColumnNamesContext) {
 				}
 			}
 			{
-				p.SetState(141)
+				p.SetState(155)
 				p.ColumnName()
 			}
 
-			p.SetState(146)
+			p.SetState(160)
 			p.GetErrorHandler().Sync(p)
 			if p.HasError() {
 				goto errorExit
@@ -3061,8 +3248,8 @@ func (s *ConditionContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
 
 func (p *SQLParser) Condition() (localctx IConditionContext) {
 	localctx = NewConditionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 30, SQLParserRULE_condition)
-	p.SetState(151)
+	p.EnterRule(localctx, 32, SQLParserRULE_condition)
+	p.SetState(165)
 	p.GetErrorHandler().Sync(p)
 	if p.HasError() {
 		goto errorExit
@@ -3072,14 +3259,14 @@ func (p *SQLParser) Condition() (localctx IConditionContext) {
 	case 1:
 		p.EnterOuterAlt(localctx, 1)
 		{
-			p.SetState(149)
+			p.SetState(163)
 			p.ComparisonCondition()
 		}
 
 	case 2:
 		p.EnterOuterAlt(localctx, 2)
 		{
-			p.SetState(150)
+			p.SetState(164)
 			p.BetweenCondition()
 		}
 
@@ -3216,14 +3403,14 @@ func (s *ComparisonConditionContext) Accept(visitor antlr.ParseTreeVisitor) inte
 
 func (p *SQLParser) ComparisonCondition() (localctx IComparisonConditionContext) {
 	localctx = NewComparisonConditionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 32, SQLParserRULE_comparisonCondition)
+	p.EnterRule(localctx, 34, SQLParserRULE_comparisonCondition)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(153)
+		p.SetState(167)
 		p.ColumnName()
 	}
 	{
-		p.SetState(154)
+		p.SetState(168)
 		p.Match(SQLParserOP)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -3231,7 +3418,7 @@ func (p *SQLParser) ComparisonCondition() (localctx IComparisonConditionContext)
 		}
 	}
 	{
-		p.SetState(155)
+		p.SetState(169)
 		p.ColumnValue()
 	}
 
@@ -3395,14 +3582,14 @@ func (s *BetweenConditionContext) Accept(visitor antlr.ParseTreeVisitor) interfa
 
 func (p *SQLParser) BetweenCondition() (localctx IBetweenConditionContext) {
 	localctx = NewBetweenConditionContext(p, p.GetParserRuleContext(), p.GetState())
-	p.EnterRule(localctx, 34, SQLParserRULE_betweenCondition)
+	p.EnterRule(localctx, 36, SQLParserRULE_betweenCondition)
 	p.EnterOuterAlt(localctx, 1)
 	{
-		p.SetState(157)
+		p.SetState(171)
 		p.ColumnName()
 	}
 	{
-		p.SetState(158)
+		p.SetState(172)
 		p.Match(SQLParserBETWEEN)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -3410,11 +3597,11 @@ func (p *SQLParser) BetweenCondition() (localctx IBetweenConditionContext) {
 		}
 	}
 	{
-		p.SetState(159)
+		p.SetState(173)
 		p.ColumnValue()
 	}
 	{
-		p.SetState(160)
+		p.SetState(174)
 		p.Match(SQLParserAND)
 		if p.HasError() {
 			// Recognition error - abort rule
@@ -3422,8 +3609,679 @@ func (p *SQLParser) BetweenCondition() (localctx IBetweenConditionContext) {
 		}
 	}
 	{
-		p.SetState(161)
+		p.SetState(175)
 		p.ColumnValue()
+	}
+
+errorExit:
+	if p.HasError() {
+		v := p.GetError()
+		localctx.SetException(v)
+		p.GetErrorHandler().ReportError(p, v)
+		p.GetErrorHandler().Recover(p, v)
+		p.SetError(nil)
+	}
+	p.ExitRule()
+	return localctx
+	goto errorExit // Trick to prevent compiler error if the label is not used
+}
+
+// IUpdateTableStatementContext is an interface to support dynamic dispatch.
+type IUpdateTableStatementContext interface {
+	antlr.ParserRuleContext
+
+	// GetParser returns the parser.
+	GetParser() antlr.Parser
+
+	// Getter signatures
+	UPDATE() antlr.TerminalNode
+	TableName() ITableNameContext
+	SET() antlr.TerminalNode
+	SetClauses() ISetClausesContext
+	Conditions() IConditionsContext
+
+	// IsUpdateTableStatementContext differentiates from other interfaces.
+	IsUpdateTableStatementContext()
+}
+
+type UpdateTableStatementContext struct {
+	antlr.BaseParserRuleContext
+	parser antlr.Parser
+}
+
+func NewEmptyUpdateTableStatementContext() *UpdateTableStatementContext {
+	var p = new(UpdateTableStatementContext)
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_updateTableStatement
+	return p
+}
+
+func InitEmptyUpdateTableStatementContext(p *UpdateTableStatementContext) {
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_updateTableStatement
+}
+
+func (*UpdateTableStatementContext) IsUpdateTableStatementContext() {}
+
+func NewUpdateTableStatementContext(parser antlr.Parser, parent antlr.ParserRuleContext, invokingState int) *UpdateTableStatementContext {
+	var p = new(UpdateTableStatementContext)
+
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, parent, invokingState)
+
+	p.parser = parser
+	p.RuleIndex = SQLParserRULE_updateTableStatement
+
+	return p
+}
+
+func (s *UpdateTableStatementContext) GetParser() antlr.Parser { return s.parser }
+
+func (s *UpdateTableStatementContext) UPDATE() antlr.TerminalNode {
+	return s.GetToken(SQLParserUPDATE, 0)
+}
+
+func (s *UpdateTableStatementContext) TableName() ITableNameContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(ITableNameContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(ITableNameContext)
+}
+
+func (s *UpdateTableStatementContext) SET() antlr.TerminalNode {
+	return s.GetToken(SQLParserSET, 0)
+}
+
+func (s *UpdateTableStatementContext) SetClauses() ISetClausesContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(ISetClausesContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(ISetClausesContext)
+}
+
+func (s *UpdateTableStatementContext) Conditions() IConditionsContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IConditionsContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IConditionsContext)
+}
+
+func (s *UpdateTableStatementContext) GetRuleContext() antlr.RuleContext {
+	return s
+}
+
+func (s *UpdateTableStatementContext) ToStringTree(ruleNames []string, recog antlr.Recognizer) string {
+	return antlr.TreesStringTree(s, ruleNames, recog)
+}
+
+func (s *UpdateTableStatementContext) EnterRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.EnterUpdateTableStatement(s)
+	}
+}
+
+func (s *UpdateTableStatementContext) ExitRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.ExitUpdateTableStatement(s)
+	}
+}
+
+func (s *UpdateTableStatementContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
+	switch t := visitor.(type) {
+	case SQLParserVisitor:
+		return t.VisitUpdateTableStatement(s)
+
+	default:
+		return t.VisitChildren(s)
+	}
+}
+
+func (p *SQLParser) UpdateTableStatement() (localctx IUpdateTableStatementContext) {
+	localctx = NewUpdateTableStatementContext(p, p.GetParserRuleContext(), p.GetState())
+	p.EnterRule(localctx, 38, SQLParserRULE_updateTableStatement)
+	p.EnterOuterAlt(localctx, 1)
+	{
+		p.SetState(177)
+		p.Match(SQLParserUPDATE)
+		if p.HasError() {
+			// Recognition error - abort rule
+			goto errorExit
+		}
+	}
+	{
+		p.SetState(178)
+		p.TableName()
+	}
+	{
+		p.SetState(179)
+		p.Match(SQLParserSET)
+		if p.HasError() {
+			// Recognition error - abort rule
+			goto errorExit
+		}
+	}
+	{
+		p.SetState(180)
+		p.SetClauses()
+	}
+	{
+		p.SetState(181)
+		p.Conditions()
+	}
+
+errorExit:
+	if p.HasError() {
+		v := p.GetError()
+		localctx.SetException(v)
+		p.GetErrorHandler().ReportError(p, v)
+		p.GetErrorHandler().Recover(p, v)
+		p.SetError(nil)
+	}
+	p.ExitRule()
+	return localctx
+	goto errorExit // Trick to prevent compiler error if the label is not used
+}
+
+// ISetClausesContext is an interface to support dynamic dispatch.
+type ISetClausesContext interface {
+	antlr.ParserRuleContext
+
+	// GetParser returns the parser.
+	GetParser() antlr.Parser
+
+	// Getter signatures
+	AllSetClause() []ISetClauseContext
+	SetClause(i int) ISetClauseContext
+	AllCOMMA() []antlr.TerminalNode
+	COMMA(i int) antlr.TerminalNode
+
+	// IsSetClausesContext differentiates from other interfaces.
+	IsSetClausesContext()
+}
+
+type SetClausesContext struct {
+	antlr.BaseParserRuleContext
+	parser antlr.Parser
+}
+
+func NewEmptySetClausesContext() *SetClausesContext {
+	var p = new(SetClausesContext)
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_setClauses
+	return p
+}
+
+func InitEmptySetClausesContext(p *SetClausesContext) {
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_setClauses
+}
+
+func (*SetClausesContext) IsSetClausesContext() {}
+
+func NewSetClausesContext(parser antlr.Parser, parent antlr.ParserRuleContext, invokingState int) *SetClausesContext {
+	var p = new(SetClausesContext)
+
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, parent, invokingState)
+
+	p.parser = parser
+	p.RuleIndex = SQLParserRULE_setClauses
+
+	return p
+}
+
+func (s *SetClausesContext) GetParser() antlr.Parser { return s.parser }
+
+func (s *SetClausesContext) AllSetClause() []ISetClauseContext {
+	children := s.GetChildren()
+	len := 0
+	for _, ctx := range children {
+		if _, ok := ctx.(ISetClauseContext); ok {
+			len++
+		}
+	}
+
+	tst := make([]ISetClauseContext, len)
+	i := 0
+	for _, ctx := range children {
+		if t, ok := ctx.(ISetClauseContext); ok {
+			tst[i] = t.(ISetClauseContext)
+			i++
+		}
+	}
+
+	return tst
+}
+
+func (s *SetClausesContext) SetClause(i int) ISetClauseContext {
+	var t antlr.RuleContext
+	j := 0
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(ISetClauseContext); ok {
+			if j == i {
+				t = ctx.(antlr.RuleContext)
+				break
+			}
+			j++
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(ISetClauseContext)
+}
+
+func (s *SetClausesContext) AllCOMMA() []antlr.TerminalNode {
+	return s.GetTokens(SQLParserCOMMA)
+}
+
+func (s *SetClausesContext) COMMA(i int) antlr.TerminalNode {
+	return s.GetToken(SQLParserCOMMA, i)
+}
+
+func (s *SetClausesContext) GetRuleContext() antlr.RuleContext {
+	return s
+}
+
+func (s *SetClausesContext) ToStringTree(ruleNames []string, recog antlr.Recognizer) string {
+	return antlr.TreesStringTree(s, ruleNames, recog)
+}
+
+func (s *SetClausesContext) EnterRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.EnterSetClauses(s)
+	}
+}
+
+func (s *SetClausesContext) ExitRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.ExitSetClauses(s)
+	}
+}
+
+func (s *SetClausesContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
+	switch t := visitor.(type) {
+	case SQLParserVisitor:
+		return t.VisitSetClauses(s)
+
+	default:
+		return t.VisitChildren(s)
+	}
+}
+
+func (p *SQLParser) SetClauses() (localctx ISetClausesContext) {
+	localctx = NewSetClausesContext(p, p.GetParserRuleContext(), p.GetState())
+	p.EnterRule(localctx, 40, SQLParserRULE_setClauses)
+	var _la int
+
+	p.EnterOuterAlt(localctx, 1)
+	{
+		p.SetState(183)
+		p.SetClause()
+	}
+	p.SetState(188)
+	p.GetErrorHandler().Sync(p)
+	if p.HasError() {
+		goto errorExit
+	}
+	_la = p.GetTokenStream().LA(1)
+
+	for _la == SQLParserCOMMA {
+		{
+			p.SetState(184)
+			p.Match(SQLParserCOMMA)
+			if p.HasError() {
+				// Recognition error - abort rule
+				goto errorExit
+			}
+		}
+		{
+			p.SetState(185)
+			p.SetClause()
+		}
+
+		p.SetState(190)
+		p.GetErrorHandler().Sync(p)
+		if p.HasError() {
+			goto errorExit
+		}
+		_la = p.GetTokenStream().LA(1)
+	}
+
+errorExit:
+	if p.HasError() {
+		v := p.GetError()
+		localctx.SetException(v)
+		p.GetErrorHandler().ReportError(p, v)
+		p.GetErrorHandler().Recover(p, v)
+		p.SetError(nil)
+	}
+	p.ExitRule()
+	return localctx
+	goto errorExit // Trick to prevent compiler error if the label is not used
+}
+
+// ISetClauseContext is an interface to support dynamic dispatch.
+type ISetClauseContext interface {
+	antlr.ParserRuleContext
+
+	// GetParser returns the parser.
+	GetParser() antlr.Parser
+
+	// Getter signatures
+	ColumnName() IColumnNameContext
+	OP() antlr.TerminalNode
+	ColumnValue() IColumnValueContext
+
+	// IsSetClauseContext differentiates from other interfaces.
+	IsSetClauseContext()
+}
+
+type SetClauseContext struct {
+	antlr.BaseParserRuleContext
+	parser antlr.Parser
+}
+
+func NewEmptySetClauseContext() *SetClauseContext {
+	var p = new(SetClauseContext)
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_setClause
+	return p
+}
+
+func InitEmptySetClauseContext(p *SetClauseContext) {
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_setClause
+}
+
+func (*SetClauseContext) IsSetClauseContext() {}
+
+func NewSetClauseContext(parser antlr.Parser, parent antlr.ParserRuleContext, invokingState int) *SetClauseContext {
+	var p = new(SetClauseContext)
+
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, parent, invokingState)
+
+	p.parser = parser
+	p.RuleIndex = SQLParserRULE_setClause
+
+	return p
+}
+
+func (s *SetClauseContext) GetParser() antlr.Parser { return s.parser }
+
+func (s *SetClauseContext) ColumnName() IColumnNameContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IColumnNameContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IColumnNameContext)
+}
+
+func (s *SetClauseContext) OP() antlr.TerminalNode {
+	return s.GetToken(SQLParserOP, 0)
+}
+
+func (s *SetClauseContext) ColumnValue() IColumnValueContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IColumnValueContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IColumnValueContext)
+}
+
+func (s *SetClauseContext) GetRuleContext() antlr.RuleContext {
+	return s
+}
+
+func (s *SetClauseContext) ToStringTree(ruleNames []string, recog antlr.Recognizer) string {
+	return antlr.TreesStringTree(s, ruleNames, recog)
+}
+
+func (s *SetClauseContext) EnterRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.EnterSetClause(s)
+	}
+}
+
+func (s *SetClauseContext) ExitRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.ExitSetClause(s)
+	}
+}
+
+func (s *SetClauseContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
+	switch t := visitor.(type) {
+	case SQLParserVisitor:
+		return t.VisitSetClause(s)
+
+	default:
+		return t.VisitChildren(s)
+	}
+}
+
+func (p *SQLParser) SetClause() (localctx ISetClauseContext) {
+	localctx = NewSetClauseContext(p, p.GetParserRuleContext(), p.GetState())
+	p.EnterRule(localctx, 42, SQLParserRULE_setClause)
+	p.EnterOuterAlt(localctx, 1)
+	{
+		p.SetState(191)
+		p.ColumnName()
+	}
+	{
+		p.SetState(192)
+		p.Match(SQLParserOP)
+		if p.HasError() {
+			// Recognition error - abort rule
+			goto errorExit
+		}
+	}
+	{
+		p.SetState(193)
+		p.ColumnValue()
+	}
+
+errorExit:
+	if p.HasError() {
+		v := p.GetError()
+		localctx.SetException(v)
+		p.GetErrorHandler().ReportError(p, v)
+		p.GetErrorHandler().Recover(p, v)
+		p.SetError(nil)
+	}
+	p.ExitRule()
+	return localctx
+	goto errorExit // Trick to prevent compiler error if the label is not used
+}
+
+// IDeleteTableStatementContext is an interface to support dynamic dispatch.
+type IDeleteTableStatementContext interface {
+	antlr.ParserRuleContext
+
+	// GetParser returns the parser.
+	GetParser() antlr.Parser
+
+	// Getter signatures
+	DELETE() antlr.TerminalNode
+	FROM() antlr.TerminalNode
+	TableName() ITableNameContext
+	Conditions() IConditionsContext
+
+	// IsDeleteTableStatementContext differentiates from other interfaces.
+	IsDeleteTableStatementContext()
+}
+
+type DeleteTableStatementContext struct {
+	antlr.BaseParserRuleContext
+	parser antlr.Parser
+}
+
+func NewEmptyDeleteTableStatementContext() *DeleteTableStatementContext {
+	var p = new(DeleteTableStatementContext)
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_deleteTableStatement
+	return p
+}
+
+func InitEmptyDeleteTableStatementContext(p *DeleteTableStatementContext) {
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, nil, -1)
+	p.RuleIndex = SQLParserRULE_deleteTableStatement
+}
+
+func (*DeleteTableStatementContext) IsDeleteTableStatementContext() {}
+
+func NewDeleteTableStatementContext(parser antlr.Parser, parent antlr.ParserRuleContext, invokingState int) *DeleteTableStatementContext {
+	var p = new(DeleteTableStatementContext)
+
+	antlr.InitBaseParserRuleContext(&p.BaseParserRuleContext, parent, invokingState)
+
+	p.parser = parser
+	p.RuleIndex = SQLParserRULE_deleteTableStatement
+
+	return p
+}
+
+func (s *DeleteTableStatementContext) GetParser() antlr.Parser { return s.parser }
+
+func (s *DeleteTableStatementContext) DELETE() antlr.TerminalNode {
+	return s.GetToken(SQLParserDELETE, 0)
+}
+
+func (s *DeleteTableStatementContext) FROM() antlr.TerminalNode {
+	return s.GetToken(SQLParserFROM, 0)
+}
+
+func (s *DeleteTableStatementContext) TableName() ITableNameContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(ITableNameContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(ITableNameContext)
+}
+
+func (s *DeleteTableStatementContext) Conditions() IConditionsContext {
+	var t antlr.RuleContext
+	for _, ctx := range s.GetChildren() {
+		if _, ok := ctx.(IConditionsContext); ok {
+			t = ctx.(antlr.RuleContext)
+			break
+		}
+	}
+
+	if t == nil {
+		return nil
+	}
+
+	return t.(IConditionsContext)
+}
+
+func (s *DeleteTableStatementContext) GetRuleContext() antlr.RuleContext {
+	return s
+}
+
+func (s *DeleteTableStatementContext) ToStringTree(ruleNames []string, recog antlr.Recognizer) string {
+	return antlr.TreesStringTree(s, ruleNames, recog)
+}
+
+func (s *DeleteTableStatementContext) EnterRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.EnterDeleteTableStatement(s)
+	}
+}
+
+func (s *DeleteTableStatementContext) ExitRule(listener antlr.ParseTreeListener) {
+	if listenerT, ok := listener.(SQLParserListener); ok {
+		listenerT.ExitDeleteTableStatement(s)
+	}
+}
+
+func (s *DeleteTableStatementContext) Accept(visitor antlr.ParseTreeVisitor) interface{} {
+	switch t := visitor.(type) {
+	case SQLParserVisitor:
+		return t.VisitDeleteTableStatement(s)
+
+	default:
+		return t.VisitChildren(s)
+	}
+}
+
+func (p *SQLParser) DeleteTableStatement() (localctx IDeleteTableStatementContext) {
+	localctx = NewDeleteTableStatementContext(p, p.GetParserRuleContext(), p.GetState())
+	p.EnterRule(localctx, 44, SQLParserRULE_deleteTableStatement)
+	p.EnterOuterAlt(localctx, 1)
+	{
+		p.SetState(195)
+		p.Match(SQLParserDELETE)
+		if p.HasError() {
+			// Recognition error - abort rule
+			goto errorExit
+		}
+	}
+	{
+		p.SetState(196)
+		p.Match(SQLParserFROM)
+		if p.HasError() {
+			// Recognition error - abort rule
+			goto errorExit
+		}
+	}
+	{
+		p.SetState(197)
+		p.TableName()
+	}
+	{
+		p.SetState(198)
+		p.Conditions()
 	}
 
 errorExit:

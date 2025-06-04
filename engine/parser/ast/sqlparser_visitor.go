@@ -49,6 +49,9 @@ type SQLParserVisitor interface {
 	// Visit a parse tree produced by SQLParser#selectTableStatement.
 	VisitSelectTableStatement(ctx *SelectTableStatementContext) interface{}
 
+	// Visit a parse tree produced by SQLParser#conditions.
+	VisitConditions(ctx *ConditionsContext) interface{}
+
 	// Visit a parse tree produced by SQLParser#selectColumnNames.
 	VisitSelectColumnNames(ctx *SelectColumnNamesContext) interface{}
 
@@ -60,4 +63,16 @@ type SQLParserVisitor interface {
 
 	// Visit a parse tree produced by SQLParser#betweenCondition.
 	VisitBetweenCondition(ctx *BetweenConditionContext) interface{}
+
+	// Visit a parse tree produced by SQLParser#updateTableStatement.
+	VisitUpdateTableStatement(ctx *UpdateTableStatementContext) interface{}
+
+	// Visit a parse tree produced by SQLParser#setClauses.
+	VisitSetClauses(ctx *SetClausesContext) interface{}
+
+	// Visit a parse tree produced by SQLParser#setClause.
+	VisitSetClause(ctx *SetClauseContext) interface{}
+
+	// Visit a parse tree produced by SQLParser#deleteTableStatement.
+	VisitDeleteTableStatement(ctx *DeleteTableStatementContext) interface{}
 }

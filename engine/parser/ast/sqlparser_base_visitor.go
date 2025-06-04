@@ -63,6 +63,10 @@ func (v *BaseSQLParserVisitor) VisitSelectTableStatement(ctx *SelectTableStateme
 	return v.VisitChildren(ctx)
 }
 
+func (v *BaseSQLParserVisitor) VisitConditions(ctx *ConditionsContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
 func (v *BaseSQLParserVisitor) VisitSelectColumnNames(ctx *SelectColumnNamesContext) interface{} {
 	return v.VisitChildren(ctx)
 }
@@ -76,5 +80,21 @@ func (v *BaseSQLParserVisitor) VisitComparisonCondition(ctx *ComparisonCondition
 }
 
 func (v *BaseSQLParserVisitor) VisitBetweenCondition(ctx *BetweenConditionContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSQLParserVisitor) VisitUpdateTableStatement(ctx *UpdateTableStatementContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSQLParserVisitor) VisitSetClauses(ctx *SetClausesContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSQLParserVisitor) VisitSetClause(ctx *SetClauseContext) interface{} {
+	return v.VisitChildren(ctx)
+}
+
+func (v *BaseSQLParserVisitor) VisitDeleteTableStatement(ctx *DeleteTableStatementContext) interface{} {
 	return v.VisitChildren(ctx)
 }

@@ -5,7 +5,13 @@ options {
 }
 
 
-sql : createTableStatement | insertTableStatement | selectTableStatement; 
+sql 
+  : createTableStatement 
+  | insertTableStatement 
+  | selectTableStatement
+  | updateTableStatement
+  | deleteTableStatement
+  ; 
 
 // CREATE TABLE 语句
 createTableStatement : 
@@ -42,9 +48,14 @@ columnValue
     | STRING      
     ;
 
+
 // Select 语句
 selectTableStatement
-  : SELECT selectColumnNames FROM tableName (WHERE condition (AND condition)*)?
+  : SELECT selectColumnNames FROM tableName conditions
+  ;
+
+  conditions
+  : (WHERE condition (AND condition)*)?
   ;
 
   selectColumnNames
@@ -62,5 +73,22 @@ selectTableStatement
   ;
   betweenCondition
   : columnName BETWEEN columnValue AND columnValue
+  ;
+
+// update 语句
+updateTableStatement
+  : UPDATE tableName SET setClauses conditions
+  ;
+setClauses
+  : setClause (COMMA setClause)*
+  ;
+
+setClause
+  : columnName OP columnValue
+  ;
+
+// delete 语句
+deleteTableStatement
+  : DELETE FROM tableName conditions
   ;
 

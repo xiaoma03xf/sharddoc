@@ -104,6 +104,12 @@ func (s *BaseSQLParserListener) EnterSelectTableStatement(ctx *SelectTableStatem
 // ExitSelectTableStatement is called when production selectTableStatement is exited.
 func (s *BaseSQLParserListener) ExitSelectTableStatement(ctx *SelectTableStatementContext) {}
 
+// EnterConditions is called when production conditions is entered.
+func (s *BaseSQLParserListener) EnterConditions(ctx *ConditionsContext) {}
+
+// ExitConditions is called when production conditions is exited.
+func (s *BaseSQLParserListener) ExitConditions(ctx *ConditionsContext) {}
+
 // EnterSelectColumnNames is called when production selectColumnNames is entered.
 func (s *BaseSQLParserListener) EnterSelectColumnNames(ctx *SelectColumnNamesContext) {}
 
@@ -127,3 +133,27 @@ func (s *BaseSQLParserListener) EnterBetweenCondition(ctx *BetweenConditionConte
 
 // ExitBetweenCondition is called when production betweenCondition is exited.
 func (s *BaseSQLParserListener) ExitBetweenCondition(ctx *BetweenConditionContext) {}
+
+// EnterUpdateTableStatement is called when production updateTableStatement is entered.
+func (s *BaseSQLParserListener) EnterUpdateTableStatement(ctx *UpdateTableStatementContext) {}
+
+// ExitUpdateTableStatement is called when production updateTableStatement is exited.
+func (s *BaseSQLParserListener) ExitUpdateTableStatement(ctx *UpdateTableStatementContext) {}
+
+// EnterSetClauses is called when production setClauses is entered.
+func (s *BaseSQLParserListener) EnterSetClauses(ctx *SetClausesContext) {}
+
+// ExitSetClauses is called when production setClauses is exited.
+func (s *BaseSQLParserListener) ExitSetClauses(ctx *SetClausesContext) {}
+
+// EnterSetClause is called when production setClause is entered.
+func (s *BaseSQLParserListener) EnterSetClause(ctx *SetClauseContext) {}
+
+// ExitSetClause is called when production setClause is exited.
+func (s *BaseSQLParserListener) ExitSetClause(ctx *SetClauseContext) {}
+
+// EnterDeleteTableStatement is called when production deleteTableStatement is entered.
+func (s *BaseSQLParserListener) EnterDeleteTableStatement(ctx *DeleteTableStatementContext) {}
+
+// ExitDeleteTableStatement is called when production deleteTableStatement is exited.
+func (s *BaseSQLParserListener) ExitDeleteTableStatement(ctx *DeleteTableStatementContext) {}

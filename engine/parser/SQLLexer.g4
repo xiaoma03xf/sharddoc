@@ -13,6 +13,9 @@ SELECT : 'SELECT';
 FROM : 'FROM';
 WHERE : 'WHERE';
 AND : 'AND';
+DELETE : 'DELETE';
+UPDATE : 'UPDATE';
+SET : 'SET';
 // 数据类型
 INT64 : 'INT64';
 BYTES : 'BYTES';

@@ -3,18 +3,33 @@ package engine
 import (
 	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
 	"github.com/itxiaoma0610/sharddoc/engine/parser/ast"
+	"github.com/itxiaoma0610/sharddoc/lib/logger"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
 
 type SQLParser struct {
 	*ast.BaseSQLParserVisitor
+}
+
+func VisitTree(sql string) interface{} {
+	input := antlr.NewInputStream(sql)
+	lexer := ast.NewSQLLexer(input)
+	tokenStream := antlr.NewCommonTokenStream(lexer, 0)
+	p := ast.NewSQLParser(tokenStream)
+	p.AddErrorListener(antlr.NewDefaultErrorListener())
+
+	tree := p.Sql()
+	if tree == nil {
+		panic("parse tree is nil, check input or parser configuration")
+	}
+	v := new(SQLParser)
+	return v.Visit(tree)
 }
 
 func (a *SQLParser) Visit(tree antlr.ParseTree) interface{} {
@@ -30,6 +45,10 @@ func (a *SQLParser) VisitSql(ctx *ast.SqlContext) interface{} {
 			return a.VisitInsertTableStatement(c)
 		case *ast.SelectTableStatementContext:
 			return a.VisitSelectTableStatement(c)
+		case *ast.UpdateTableStatementContext:
+			return a.VisitUpdateTableStatement(c)
+		case *ast.DeleteTableStatementContext:
+			return a.VisitDeleteTableStatement(c)
 		}
 	}
 	return nil
@@ -38,35 +57,10 @@ func (a *SQLParser) VisitSql(ctx *ast.SqlContext) interface{} {
 func (a *SQLParser) VisitCreateTableStatement(ctx *ast.CreateTableStatementContext) interface{} {
 	// CreatTableStatement return
 	t := new(TableDef)
-	for i := 0; i < ctx.GetChildCount(); i++ {
-		child := ctx.GetChild(i)
-		switch c := child.(type) {
-		case *ast.TableNameContext:
-			t.Name = a.VisitTableName(c).(string)
-		case *ast.ColumnDefinitionsContext:
-			defs := a.VisitColumnDefinitions(c).(*TableDef)
-			t.Cols = defs.Cols
-			t.Types = defs.Types
-		case *ast.ColumnNameContext:
-			t.Indexes = append(t.Indexes, []string{c.GetText()})
-		case *ast.IndexDefinitionsContext:
-			indexs := a.VisitIndexDefinitions(c).([][]string)
-			if len(t.Indexes) == 0 {
-				t.Indexes[0] = []string{}
-			}
-			t.Indexes = append(t.Indexes, indexs...)
-		}
-	}
-	return t
-}
-func (a *SQLParser) VisitTableName(ctx *ast.TableNameContext) interface{} {
-	return ctx.GetText()
-}
-func (a *SQLParser) VisitColumnDefinitions(ctx *ast.ColumnDefinitionsContext) interface{} {
-	// return col []string{}, type []uint32{}
-	t := &TableDef{}
-	defs := ctx.AllColumnDefinition()
-	for _, def := range defs {
+	t.Name = ctx.TableName().GetText()
+
+	alldefs := ctx.ColumnDefinitions().AllColumnDefinition()
+	for _, def := range alldefs {
 		t.Cols = append(t.Cols, def.GetStart().GetText())
 		ctype := def.GetStop().GetText()
 		switch ctype {
@@ -78,24 +72,24 @@ func (a *SQLParser) VisitColumnDefinitions(ctx *ast.ColumnDefinitionsContext) in
 			return fmt.Errorf("unreachable type")
 		}
 	}
-	return t
-}
 
-func (a *SQLParser) VisitIndexDefinitions(ctx *ast.IndexDefinitionsContext) interface{} {
-	indexs := [][]string{}
-	for _, indexdef := range ctx.AllIndexDefinition() {
+	// 添加主键索引
+	t.Indexes = append(t.Indexes, []string{ctx.ColumnName().GetText()})
+	// 添加其他索引
+	for _, indexdef := range ctx.IndexDefinitions().AllIndexDefinition() {
 		index := []string{}
 		for _, iname := range indexdef.AllColumnName() {
 			index = append(index, iname.GetText())
 		}
-		indexs = append(indexs, index)
+		t.Indexes = append(t.Indexes, index)
 	}
-	return indexs
-}
-func (a *SQLParser) VisitInsertTableStatement(ctx *ast.InsertTableStatementContext) interface{} {
-	// 	rec := Record{}
 
+	return t
+}
+
+func (a *SQLParser) VisitInsertTableStatement(ctx *ast.InsertTableStatementContext) interface{} {
 	rec := &Record{}
+
 	for i := 0; i < len(ctx.ColumnInsertValues().AllColumnValue()); i++ {
 		col := ctx.ColumnInsertNames().AllColumnName()[i].GetText()
 		if ctx.ColumnInsertValues().AllColumnValue()[i].INTEGER() == nil {
@@ -109,9 +103,8 @@ func (a *SQLParser) VisitInsertTableStatement(ctx *ast.InsertTableStatementConte
 			rec.AddInt64(col, i)
 		}
 	}
-
-	return rec
-
+	// 返回插入数据和表名
+	return &InsertRes{TableName: ctx.TableName().GetText(), Rec: rec}
 }
 
 type CondType int
@@ -128,29 +121,6 @@ const (
 	MAX_NAME = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 )
 
-func conditionType(cond ...ast.IConditionContext) CondType {
-	if len(cond) == 3 {
-		return UNSUPPORTED_TYPE
-	}
-	if len(cond) == 1 {
-		if condition, ok := (cond[0]).(*ast.ConditionContext); ok {
-			if condition.BetweenCondition() != nil {
-				return SIG_BEWTEEN
-			} else {
-				return SIG_PARE
-			}
-		}
-	}
-	if condition, ok := (cond[1]).(*ast.ConditionContext); ok {
-		if condition.BetweenCondition() != nil {
-			return PARE_LINK_BETWEEN
-		} else {
-			return PARE_LINK_PARE
-		}
-	}
-	return UNSUPPORTED_TYPE
-}
-
 var Op2Cmp = map[string]int{
 	">":  CMP_GT,
 	">=": CMP_GE,
@@ -164,16 +134,31 @@ type SelectInfo struct {
 	Scan        *Scanner
 }
 
-func (v *SQLParser) VisitSelectTableStatement(ctx *ast.SelectTableStatementContext) interface{} {
-	// todo current support select sync, 暂时只支持两个条件
-	// select * from table where age > 18 and age < 40 相同键位
-	// select * from table where age = 18 and height = 175
-	// select * from table where age = 18 and height bewteen 170 and 175
-	var err error
-	var selectField []string
-	scan := &Scanner{}
+func conditionType(cond ...ast.IConditionContext) CondType {
+	if len(cond) >= 3 {
+		return UNSUPPORTED_TYPE
+	}
 
+	if len(cond) == 1 {
+		if cond[0].BetweenCondition() != nil {
+			return SIG_BEWTEEN
+		} else {
+			return SIG_PARE
+		}
+	} else if len(cond) == 2 {
+		if cond[1].ComparisonCondition() != nil {
+			return PARE_LINK_PARE
+		}
+		return PARE_LINK_BETWEEN
+	}
+	return UNSUPPORTED_TYPE
+}
+
+func (v *SQLParser) VisitConditions(ctx *ast.ConditionsContext) interface{} {
+	var err error
+	scan := &Scanner{}
 	condtype := conditionType(ctx.AllCondition()...)
+
 	switch condtype {
 	case SIG_PARE:
 		err = selectPare(scan, ctx)
@@ -186,25 +171,15 @@ func (v *SQLParser) VisitSelectTableStatement(ctx *ast.SelectTableStatementConte
 	case UNSUPPORTED_TYPE:
 		return fmt.Errorf("unsupported type")
 	}
+
 	if err != nil {
 		return fmt.Errorf("build scanner err")
 	}
 
-	if ctx.SelectColumnNames().STAR() != nil {
-		selectField = append(selectField, "*")
-	} else {
-		for _, col := range ctx.SelectColumnNames().AllColumnName() {
-			selectField = append(selectField, col.GetText())
-		}
-	}
-	return &SelectInfo{
-		TableName:   ctx.TableName().GetText(),
-		SelectField: selectField,
-		Scan:        scan,
-	}
+	return scan
 }
 
-func selectPare(scan *Scanner, ctx *ast.SelectTableStatementContext) error {
+func selectPare(scan *Scanner, ctx *ast.ConditionsContext) error {
 	cond := ctx.AllCondition()[0].ComparisonCondition()
 	op := cond.OP().GetText()
 	colname := cond.ColumnName().GetText()
@@ -287,7 +262,7 @@ func selectPare(scan *Scanner, ctx *ast.SelectTableStatementContext) error {
 	}
 	return nil
 }
-func selectBewteen(scan *Scanner, ctx *ast.SelectTableStatementContext) error {
+func selectBewteen(scan *Scanner, ctx *ast.ConditionsContext) error {
 	condInfo := condData(ctx.AllCondition()[0].(*ast.ConditionContext))
 	recl := Record{}
 	recr := Record{}
@@ -320,7 +295,7 @@ func condInt64Data(data *ast.ColumnValueContext) int64 {
 	return val
 }
 
-func selectPareLinkPare(scan *Scanner, ctx *ast.SelectTableStatementContext) error {
+func selectPareLinkPare(scan *Scanner, ctx *ast.ConditionsContext) error {
 	// 两种情况, todo 暂时规定左大右小
 	// select * from table where age > 18 and age < 40 相同键位
 	// select * from table where age = 18 and height = 175
@@ -476,7 +451,7 @@ func leftLessThanRight(data ...any) error {
 	}
 	return nil
 }
-func selectPareLinkBetween(scan *Scanner, ctx *ast.SelectTableStatementContext) error {
+func selectPareLinkBetween(scan *Scanner, ctx *ast.ConditionsContext) error {
 	// select * from table where age =18 and height between 170 and 175
 	allCond := ctx.AllCondition()
 
@@ -531,81 +506,193 @@ func reduceSelectData(scan *Scanner) []Record {
 	}
 	return got
 }
+func (v *SQLParser) VisitSelectTableStatement(ctx *ast.SelectTableStatementContext) interface{} {
+	// todo current support select sync, 暂时只支持两个条件
+	// select * from table where age > 18 and age < 40 相同键位
+	// select * from table where age = 18 and height = 175
+	// select * from table where age = 18 and height bewteen 170 and 175
+
+	scan := v.VisitConditions(ctx.Conditions().(*ast.ConditionsContext)).(*Scanner)
+
+	var selectField []string
+	if ctx.SelectColumnNames().STAR() != nil {
+		selectField = append(selectField, "*")
+	} else {
+		for _, col := range ctx.SelectColumnNames().AllColumnName() {
+			selectField = append(selectField, col.GetText())
+		}
+	}
+	return &SelectInfo{
+		TableName:   ctx.TableName().GetText(),
+		SelectField: selectField,
+		Scan:        scan,
+	}
+}
 
 func toCamel(s string) string {
 	return cases.Title(language.English).String(s)
 }
 
-func VisitTree(sql string) interface{} {
-	input := antlr.NewInputStream(sql)
-	lexer := ast.NewSQLLexer(input)
-	tokenStream := antlr.NewCommonTokenStream(lexer, 0)
-	p := ast.NewSQLParser(tokenStream)
-	p.AddErrorListener(antlr.NewDefaultErrorListener())
-
-	tree := p.Sql()
-	if tree == nil {
-		panic("parse tree is nil, check input or parser configuration")
-	}
-	v := new(SQLParser)
-	return v.Visit(tree)
-}
-
-func mapStructFieldsOnce(ptr any) map[string]reflect.Value {
-	val := reflect.ValueOf(ptr).Elem() // 获取结构体值
-	typ := val.Type()
-
-	fieldMap := make(map[string]reflect.Value)
-	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i)
-		if field.PkgPath != "" { // 非导出字段跳过
-			continue
+// update 语句
+func (v *SQLParser) VisitUpdateTableStatement(ctx *ast.UpdateTableStatementContext) interface{} {
+	// 根据条件查出所有 Record 记录
+	var err error
+	for _, setclause := range ctx.SetClauses().AllSetClause() {
+		if setclause.OP().GetText() != "=" {
+			err = fmt.Errorf("updata OP not equal")
 		}
-		fieldMap[strings.ToLower(field.Name)] = val.Field(i)
 	}
-	return fieldMap
+
+	setmp := make(map[string]string)
+	scan := v.VisitConditions(ctx.Conditions().(*ast.ConditionsContext)).(*Scanner)
+	allsets := ctx.SetClauses().AllSetClause()
+	for _, set := range allsets {
+		setmp[set.ColumnName().GetText()] = set.ColumnValue().GetText()
+	}
+	return &UpdateRes{
+		TableName: ctx.TableName().GetText(),
+		UpdateMp:  setmp,
+		Scan:      scan,
+		Err:       err,
+	}
 }
-func convertValue(v Value) (any, error) {
-	switch v.Type {
-	case TYPE_INT64:
-		return int(v.I64), nil
-	case TYPE_BYTES:
-		return string(v.Str), nil
+
+func (v *SQLParser) VisitDeleteTableStatement(ctx *ast.DeleteTableStatementContext) interface{} {
+	return &DelRes{
+		TableName: ctx.TableName().GetText(),
+		Scan:      v.VisitConditions(ctx.Conditions().(*ast.ConditionsContext)).(*Scanner),
+	}
+}
+
+// func (db *DB) Begin()
+// select 语句, 查询不需要建立事务
+// db.Raw("SELECT name, id FROM tbl_test WHERE age = 18").Scan(&[]User{})
+func (db *DB) Raw(sql string) *QueryResult {
+	selectInfo := VisitTree(sql).(*SelectInfo)
+
+	// Since this is a read-only operation, we can use a transaction
+	// without committing it, as we only need its snapshot for reading
+	tx := DBTX{}
+	db.Begin(&tx)
+
+	err := tx.Scan(selectInfo.TableName, selectInfo.Scan)
+	if err != nil {
+		db.Abort(&tx)
+		return &QueryResult{nil, err}
+	}
+	return &QueryResult{Recs: reduceSelectData(selectInfo.Scan), Err: nil}
+}
+
+// 增删改,建表
+func (db *DB) Exec(sql string) error {
+	tx := DBTX{}
+	db.Begin(&tx)
+
+	execres := VisitTree(sql)
+	switch res := execres.(type) {
+	case *TableDef:
+		// 创表语句
+		if err := tx.TableNew(res); err != nil {
+			logger.Warn(sql, "create table err:", err)
+			db.Abort(&tx)
+		}
+	case *InsertRes:
+		if _, err := tx.Insert(res.TableName, *res.Rec); err != nil {
+			logger.Warn(sql, "insert data err:", err)
+			db.Abort(&tx)
+			return fmt.Errorf("insert data %v, err:%v", res.Rec, err)
+		}
+	case *UpdateRes:
+		if res.Err != nil {
+			logger.Warn(sql, "update data err:", res.Err)
+			db.Abort(&tx)
+			return res.Err
+		}
+		// 1.根据条件查询出需要更新的记录
+		if res.Scan == nil {
+			logger.Warn(sql, "update data err: scan is nil")
+			db.Abort(&tx)
+			return fmt.Errorf("update data err: scan is nil")
+		}
+		if err := tx.Scan(res.TableName, res.Scan); err != nil {
+			logger.Warn(sql, "update data err:", err)
+			db.Abort(&tx)
+		}
+		Rec := reduceSelectData(res.Scan)
+
+		// 2.更新记录
+		for _, rec := range Rec {
+			// 遍历每一条需要更新的值
+			for col, newval := range res.UpdateMp {
+				// 依次更新查询记录中的值
+				for i, v := range rec.Cols {
+					if v == col {
+						switch rec.Vals[i].Type {
+						case TYPE_INT64:
+							newvalInt, _ := strconv.ParseInt(newval, 10, 64)
+							rec.Vals[i].I64 = newvalInt
+						case TYPE_BYTES:
+							rec.Vals[i].Str = []byte(newval)
+						default:
+							db.Abort(&tx)
+							return fmt.Errorf("unsupported type for update")
+						}
+					}
+				}
+			}
+			_, err := tx.Update(res.TableName, rec)
+			if err != nil {
+				logger.Warn(sql, "update data err:", err)
+				db.Abort(&tx)
+				return fmt.Errorf("updata rec %v, err: %v", rec, err)
+			}
+		}
+	case *DelRes:
+		// 1.根据条件查询出需要更新的记录
+		if res.Scan == nil {
+			logger.Warn(sql, "update data err: scan is nil")
+			db.Abort(&tx)
+			return fmt.Errorf("update data err: scan is nil")
+		}
+		if err := tx.Scan(res.TableName, res.Scan); err != nil {
+			logger.Warn(sql, "update data err:", err)
+			db.Abort(&tx)
+		}
+		Rec := reduceSelectData(res.Scan)
+		for _, rec := range Rec {
+			_, err := tx.Delete(res.TableName, rec)
+			if err != nil {
+				logger.Warn(sql, "delete data err:", err)
+				db.Abort(&tx)
+				return fmt.Errorf("delete rec %v, err: %v", rec, err)
+			}
+		}
 	default:
-		return nil, fmt.Errorf("unsupported value type: %d", v.Type)
+		return fmt.Errorf("unsupported sql type")
 	}
-}
-func scanRecordToStruct(record Record, ptr any, fields map[string]reflect.Value) error {
-	for i, col := range record.Cols {
-		f, ok := fields[strings.ToLower(col)]
-		if !ok {
-			continue
-		}
-		val, err := convertValue(record.Vals[i])
-		if err != nil {
-			return err
-		}
-		rv := reflect.ValueOf(val)
-		if rv.Type().AssignableTo(f.Type()) {
-			f.Set(rv)
-		} else if rv.Type().ConvertibleTo(f.Type()) {
-			f.Set(rv.Convert(f.Type()))
-		} else {
-			return fmt.Errorf("cannot assign %v to field %v", rv.Type(), f.Type())
-		}
-	}
-	return nil
-}
-func scanRecordsToStructs(records []Record, ptrs []any) error {
-	fields := mapStructFieldsOnce(ptrs[0])
-	for i, record := range records {
-		if i >= len(ptrs) {
-			break
-		}
-		if err := scanRecordToStruct(record, ptrs[i], fields); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
+	return db.Commit(&tx)
+}
+func BuildInsertSQL(table string, columns []string, values []interface{}) string {
+	var cols string
+	var vals []string
+	for i, val := range values {
+		cols += columns[i]
+		if i != len(values)-1 {
+			cols += ", "
+		}
+		vals = append(vals, formatValue(val))
+	}
+	return fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);", table, cols, strings.Join(vals, ", "))
+}
+func formatValue(val interface{}) string {
+	switch v := val.(type) {
+	case string:
+		// 注意转义字符串中间的引号
+		return fmt.Sprintf("'%s'", strings.ReplaceAll(v, "'", "''"))
+	case int, int64, float64:
+		return fmt.Sprintf("%v", v)
+	default:
+		return "NULL"
+	}
+}
