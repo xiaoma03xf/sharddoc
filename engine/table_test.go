@@ -926,3 +926,39 @@ func TestIndexQuery(t *testing.T) {
 	}
 	r.commit(tx)
 }
+
+func TestGetDBTableInfo(t *testing.T) {
+	// r := NewR()
+	// defer r.dispose()
+	// // 创建一个测试表，包含多种类型的列和索引
+	// tdef := &TableDef{
+	// 	Name:    "tbl_test",
+	// 	Cols:    []string{"id", "ks2", "s1", "i2"},
+	// 	Types:   []uint32{TYPE_INT64, TYPE_BYTES, TYPE_BYTES, TYPE_INT64},
+	// 	Indexes: [][]string{{"id"}},
+	// }
+	// r.create(tdef)
+
+	// // 创建第二个测试表，结构更简单
+	// tdef = &TableDef{
+	// 	Name:    "tbl_test2",
+	// 	Cols:    []string{"id", "ks2"},
+	// 	Types:   []uint32{TYPE_INT64, TYPE_BYTES},
+	// 	Indexes: [][]string{{"id"}},
+	// }
+	// r.create(tdef)
+	// r := GenerateTestDB()
+	// defer r.dispose()
+	// f, err := r.db.ExportDB()
+	// if err != nil {
+	// 	t.Error(err)
+	// }
+	// fmt.Println(f)
+	recs, err := LoadRecordsFromDataFile("./r_export/tbl_test.data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rec := range recs {
+		fmt.Println(rec)
+	}
+}

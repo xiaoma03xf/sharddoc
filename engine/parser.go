@@ -116,10 +116,9 @@ const (
 	PARE_LINK_BETWEEN          //age = 18 and height between 170 and 175
 	UNSUPPORTED_TYPE
 )
-const (
-	MIN_NAME = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
-	MAX_NAME = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-)
+
+const MIN_NAME = ""
+const MAX_NAME = "\xff\xff\xff\xff\xff\xff\xff\xff" // 足够长的最大字节
 
 var Op2Cmp = map[string]int{
 	">":  CMP_GT,

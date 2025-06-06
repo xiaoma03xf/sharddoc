@@ -3,9 +3,15 @@ package engine
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"io"
+	"math"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -63,6 +69,11 @@ type Value struct {
 type Record struct {
 	Cols []string
 	Vals []Value
+}
+
+func init() {
+	gob.Register(Record{})
+	gob.Register(Value{})
 }
 
 func (rec *Record) AddStr(col string, val []byte) *Record {
@@ -328,6 +339,13 @@ func tableDefCheck(tdef *TableDef) error {
 		}
 		tdef.Indexes[i] = index
 	}
+
+	// for _, col := range tdef.Cols {
+	// 	if strings.ToLower(col) == "id" {
+	// 		return nil
+	// 	}
+	// }
+	// return fmt.Errorf("the id field is required")
 	return nil
 }
 
@@ -398,6 +416,7 @@ func (tx *DBTX) TableNew(tdef *TableDef) error {
 	if err != nil {
 		return err
 	}
+
 	// 4. store the schema, 持久化表结构
 	val, err := json.Marshal(tdef)
 	assert(err == nil)
@@ -688,4 +707,112 @@ func (tx *DBTX) Scan(table string, req *Scanner) error {
 		return fmt.Errorf("table not found: %s", table)
 	}
 	return dbScan(tx, tdef, req)
+}
+
+func (db *DB) GetAllTables() (t []TableDef, e error) {
+	tx := DBTX{}
+	db.Begin(&tx)
+	sc := &Scanner{
+		Cmp1: CMP_GE,
+		Cmp2: CMP_LE,
+		Key1: *(&Record{}).AddStr("name", []byte(MIN_NAME)),
+		Key2: *(&Record{}).AddStr("name", []byte(MAX_NAME)),
+	}
+	if err := tx.Scan("@table", sc); err != nil {
+		return nil, fmt.Errorf("query table info error")
+	}
+	err := db.Commit(&tx)
+	if err != nil {
+		return nil, err
+	}
+	// json unmarshal
+	rec := reduceSelectData(sc)
+	for _, r := range rec {
+		tdef := &TableDef{}
+		err = json.Unmarshal(r.Get("def").Str, tdef)
+		assert(err == nil)
+		t = append(t, *tdef)
+	}
+	return
+}
+
+// 获取当前db 所有表结构, 主要用于创建db逻辑快照
+// snapshotDir, 假如数据库名为 r.db 其中两张表 tbl_test1,tbl_test2
+// 会生成 r_export 文件目录, 下面包含有schema.json存有数据库表信息
+// tbl_test1.data, tbl_test2.data 分别把每个表的数据 Record{}二进制编码
+func (db *DB) ExportDB() (snapshotDir string, err error) {
+	if strings.HasSuffix(db.Path, ".db") {
+		snapshotDir = db.Path[:len(db.Path)-3] + "_export"
+	} else {
+		snapshotDir = db.Path + "_export"
+	}
+	// 1. 创建快照目录
+	if err = os.MkdirAll(snapshotDir, 0755); err != nil {
+		return
+	}
+	// 2. 获取所有的表结构,表结构存入json
+	allTables, err := db.GetAllTables()
+	if err != nil {
+		return "", err
+	}
+	// 写入表结构 snapshotDir目录下的schema.json
+	file, _ := os.Create(filepath.Join(snapshotDir, "schema.json"))
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", " ")
+	if err = encoder.Encode(allTables); err != nil {
+		return "", err
+	}
+	// 把每张表的数据写入对应文件
+	for _, table := range allTables {
+		datapath := filepath.Join(snapshotDir, table.Name+".data")
+		dataFile, err := os.Create(datapath)
+		if err != nil {
+			return "", err
+		}
+		// 查询当前表的所有数据
+		tx := DBTX{}
+		db.Begin(&tx)
+		sc := &Scanner{
+			Cmp1: CMP_GE,
+			Cmp2: CMP_LE,
+			Key1: *(&Record{}).AddInt64("id", math.MinInt64/2),
+			Key2: *(&Record{}).AddInt64("id", math.MaxInt64/2),
+		}
+		if err := tx.Scan(table.Name, sc); err != nil {
+			return snapshotDir, err
+		}
+		recs := reduceSelectData(sc)
+		enc := gob.NewEncoder(dataFile)
+		for _, rec := range recs {
+			if err := enc.Encode(rec); err != nil {
+				_ = dataFile.Close()
+				return "", err
+			}
+		}
+		_ = dataFile.Close()
+	}
+	return
+}
+
+// LoadRecordsFromDataFile 从gob编码中读取数据库数据
+func LoadRecordsFromDataFile(dataPath string) ([]Record, error) {
+	dataFile, _ := os.Open(dataPath)
+	defer dataFile.Close()
+	dec := gob.NewDecoder(dataFile)
+
+	var records []Record
+	for {
+		var rec Record
+		err := dec.Decode(&rec)
+		if err == io.EOF {
+			break // 读取完毕
+		}
+		if err != nil {
+			return nil, err // 中途出错
+		}
+		records = append(records, rec)
+	}
+	return records, nil
 }

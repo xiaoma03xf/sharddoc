@@ -1,0 +1,36 @@
+[
+ {
+  "Name": "tbl_test",
+  "Types": [
+   2,
+   1,
+   2,
+   2
+  ],
+  "Cols": [
+   "id",
+   "name",
+   "age",
+   "height"
+  ],
+  "Indexes": [
+   [
+    "id"
+   ],
+   [
+    "name",
+    "id"
+   ],
+   [
+    "age",
+    "height",
+    "id"
+   ]
+  ],
+  "Prefixes": [
+   100,
+   101,
+   102
+  ]
+ }
+]
