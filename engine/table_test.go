@@ -947,13 +947,14 @@ func TestGetDBTableInfo(t *testing.T) {
 	// 	Indexes: [][]string{{"id"}},
 	// }
 	// r.create(tdef)
-	// r := GenerateTestDB()
-	// defer r.dispose()
-	// f, err := r.db.ExportDB()
-	// if err != nil {
-	// 	t.Error(err)
-	// }
-	// fmt.Println(f)
+
+	r := GenerateTestDB()
+	defer r.dispose()
+	f, err := r.db.ExportDB()
+	if err != nil {
+		t.Error(err)
+	}
+	fmt.Println(f)
 	recs, err := LoadRecordsFromDataFile("./r_export/tbl_test.data")
 	if err != nil {
 		t.Fatal(err)
@@ -961,4 +962,37 @@ func TestGetDBTableInfo(t *testing.T) {
 	for _, rec := range recs {
 		fmt.Println(rec)
 	}
+}
+
+// 恢复数据库快照
+func TestImportDB(t *testing.T) {
+	r, err := ImportDB("r_export")
+	if err != nil {
+		t.Log(err)
+	}
+	defer os.Remove("r_temp.db")
+	fmt.Println(r.Path)
+}
+
+type RaftDB struct {
+	db  DB                  // 被测试的数据库实例
+	ref map[string][]Record // 参考数据映射，用于验证数据库操作结果
+}
+
+func NewRaftDB(dbname string) *RaftDB {
+	_ = os.Remove("r.db")
+	r := &RaftDB{
+		db:  DB{Path: fmt.Sprintf("%v.db", dbname)},
+		ref: map[string][]Record{},
+	}
+	err := r.db.Open()
+	assert(err == nil)
+	return r
+}
+
+func (r *RaftDB) raftdbDispose() {
+	r.db.Close()
+	_ = os.Remove(fmt.Sprintf("%v.db", r.db.Path))
+}
+func TestRaftNodes(t *testing.T) {
 }

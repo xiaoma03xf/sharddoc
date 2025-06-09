@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
-	"github.com/itxiaoma0610/sharddoc/engine/parser/ast"
-	"github.com/itxiaoma0610/sharddoc/lib/logger"
+	"github.com/xiaoma03xf/sharddoc/engine/parser/ast"
+	"github.com/xiaoma03xf/sharddoc/lib/logger"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )

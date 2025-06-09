@@ -20,7 +20,7 @@ func nofsync(int) error {
 }
 
 func newD() *D {
-	os.Remove("test.db")
+	_ = os.Remove("test.db")
 
 	d := &D{}
 	d.ref = map[string]string{}
