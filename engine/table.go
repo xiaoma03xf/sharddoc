@@ -783,6 +783,9 @@ func (db *DB) ExportDB() (snapshotDir string, err error) {
 		if err := tx.Scan(table.Name, sc); err != nil {
 			return snapshotDir, err
 		}
+		if err = db.Commit(&tx); err != nil {
+			return "", err
+		}
 		recs := reduceSelectData(sc)
 		enc := gob.NewEncoder(dataFile)
 		for _, rec := range recs {
@@ -817,98 +820,9 @@ func LoadRecordsFromDataFile(dataPath string) ([]Record, error) {
 	return records, nil
 }
 
-// func ImportDB(dbDir string) (*DB, error) {
-// 	// 如果数据库命名 r.db 导出的快照名为 r_export
-// 	// 快照可以先为 r_temp.db, 然后删除原数据库r.db, 然后再重命名
-// 	import_db_path := dbDir[:len(dbDir)-6] + "temp.db"
-// 	r := &DB{Path: import_db_path}
-// 	if err := r.Open(); err != nil {
-// 		return nil, err
-// 	}
-// 	// 读取表结构,并创建表
-// 	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
-// 		return nil, fmt.Errorf("snapshot directory %s does not exist", dbDir)
-// 	}
-// 	schemaPath := filepath.Join(dbDir, "schema.json")
-// 	jsonBytes, err := os.ReadFile(schemaPath)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("faild to read schema.json: %v", err)
-// 	}
-// 	// 读取表结构, 创建表
-// 	var defs []TableDef
-// 	if err := json.Unmarshal(jsonBytes, &defs); err != nil {
-// 		return nil, fmt.Errorf("faild to unmarshal schema.json:%v", err)
-// 	}
-
-// 	var mutest sync.Mutex
-// 	var wg sync.WaitGroup
-// 	errChan := make(chan error, len(defs))
-// 	tx := DBTX{}
-// 	r.Begin(&tx)
-// 	for _, def := range defs {
-// 		mutest.Lock()
-// 		defer mutest.Unlock()
-// 		fmt.Println(def)
-// 		wg.Add(1)
-// 		go func(def TableDef) {
-// 			defer wg.Done()
-// 			if err := tx.TableNew(&def); err != nil {
-// 				errChan <- fmt.Errorf("failed to create table: %v", err)
-// 			}
-// 			datapath := filepath.Join(dbDir, def.Name+".data")
-// 			recs, err := LoadRecordsFromDataFile(datapath)
-// 			if err != nil {
-// 				errChan <- fmt.Errorf("load recs err:%v", err)
-// 			}
-// 			for _, rec := range recs {
-// 				if _, err := tx.Insert(def.Name, rec); err != nil {
-// 					errChan <- err
-// 				}
-// 			}
-// 		}(def)
-// 	}
-// 	wg.Wait()
-
-// 	select {
-// 	case err := <-errChan:
-// 		r.Abort(&tx) // 如果有错误，中止事务
-// 		return nil, err
-// 	default:
-// 		// 提交事务
-// 		if err := r.Commit(&tx); err != nil {
-// 			return nil, fmt.Errorf("failed to commit transaction: %v", err)
-// 		}
-// 	}
-
-// 	return r, nil
-// }
-
-// // LoadRecordsFromDataFile 从gob编码中读取数据库数据
-// func LoadRecordsFromDataFile(dataPath string) ([]Record, error) {
-// 	dataFile, _ := os.Open(dataPath)
-// 	defer dataFile.Close()
-// 	dec := gob.NewDecoder(dataFile)
-
-// 	var records []Record
-// 	for {
-// 		var rec Record
-// 		err := dec.Decode(&rec)
-// 		if err == io.EOF {
-// 			break // 读取完毕
-// 		}
-// 		if err != nil {
-// 			return nil, err // 中途出错
-// 		}
-// 		records = append(records, rec)
-// 	}
-// 	return records, nil
-// }
-
-func ImportDB(dbDir string) (*DB, error) {
-	// 如果数据库命名 r.db 导出的快照名为 r_export
-	// 快照可以先为 r_temp.db, 然后删除原数据库r.db, 然后再重命名
-	import_db_path := dbDir[:len(dbDir)-6] + "temp.db"
-	r := &DB{Path: import_db_path}
+// ImportDB. dbDir 表示要恢复的文件夹
+func ImportDB(dbDir, dbname string) (*DB, error) {
+	r := &DB{Path: dbname}
 	if err := r.Open(); err != nil {
 		return nil, err
 	}
@@ -916,6 +830,7 @@ func ImportDB(dbDir string) (*DB, error) {
 	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("snapshot directory %s does not exist", dbDir)
 	}
+
 	schemaPath := filepath.Join(dbDir, "schema.json")
 	jsonBytes, err := os.ReadFile(schemaPath)
 	if err != nil {
@@ -927,45 +842,39 @@ func ImportDB(dbDir string) (*DB, error) {
 		return nil, fmt.Errorf("faild to unmarshal schema.json:%v", err)
 	}
 
-	var mutest sync.Mutex
 	var wg sync.WaitGroup
-	errChan := make(chan error, len(defs))
-	tx := DBTX{}
-	r.Begin(&tx)
+	tx := &DBTX{}
+	r.Begin(tx)
+	var _err error
 	for _, def := range defs {
-		mutest.Lock()
-		defer mutest.Unlock()
-		fmt.Println(def)
 		wg.Add(1)
 		go func(def TableDef) {
 			defer wg.Done()
+			// 将def的prefix清空
+			def.Prefixes = []uint32{}
 			if err := tx.TableNew(&def); err != nil {
-				errChan <- fmt.Errorf("failed to create table: %v", err)
+				_err = fmt.Errorf("failed to create table: %v", err)
 			}
 			datapath := filepath.Join(dbDir, def.Name+".data")
 			recs, err := LoadRecordsFromDataFile(datapath)
 			if err != nil {
-				errChan <- fmt.Errorf("load recs err:%v", err)
+				_err = fmt.Errorf("load recs err:%v", err)
 			}
 			for _, rec := range recs {
 				if _, err := tx.Insert(def.Name, rec); err != nil {
-					errChan <- err
+					_err = err
 				}
 			}
 		}(def)
 	}
 	wg.Wait()
-
-	select {
-	case err := <-errChan:
-		r.Abort(&tx) // 如果有错误，中止事务
-		return nil, err
-	default:
-		// 提交事务
-		if err := r.Commit(&tx); err != nil {
-			return nil, fmt.Errorf("failed to commit transaction: %v", err)
-		}
+	if _err != nil {
+		r.Abort(tx)
+		return nil, _err
 	}
-
+	// 提交事务
+	if err := r.Commit(tx); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %v", err)
+	}
 	return r, nil
 }

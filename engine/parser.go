@@ -566,20 +566,26 @@ func (v *SQLParser) VisitDeleteTableStatement(ctx *ast.DeleteTableStatementConte
 // func (db *DB) Begin()
 // select 语句, 查询不需要建立事务
 // db.Raw("SELECT name, id FROM tbl_test WHERE age = 18").Scan(&[]User{})
-func (db *DB) Raw(sql string) *QueryResult {
+func (db *DB) Raw(sql string) (q *QueryResult) {
+	q = &QueryResult{}
 	selectInfo := VisitTree(sql).(*SelectInfo)
 
 	// Since this is a read-only operation, we can use a transaction
 	// without committing it, as we only need its snapshot for reading
-	tx := DBTX{}
-	db.Begin(&tx)
+	tx := &DBTX{}
+	db.Begin(tx)
 
 	err := tx.Scan(selectInfo.TableName, selectInfo.Scan)
 	if err != nil {
-		db.Abort(&tx)
+		db.Abort(tx)
 		return &QueryResult{nil, err}
 	}
-	return &QueryResult{Recs: reduceSelectData(selectInfo.Scan), Err: nil}
+	err = db.Commit(tx)
+	if err != nil {
+		q.Err = err
+	}
+	q.Recs = reduceSelectData(selectInfo.Scan)
+	return
 }
 
 // 增删改,建表

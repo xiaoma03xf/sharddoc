@@ -966,12 +966,72 @@ func TestGetDBTableInfo(t *testing.T) {
 
 // 恢复数据库快照
 func TestImportDB(t *testing.T) {
-	r, err := ImportDB("r_export")
+	r0 := GenerateTestDB()
+	defer func() {
+		r0.dispose()
+		os.RemoveAll("r_export")
+		os.Remove("testdb")
+	}()
+	// 导出当前数据库
+	snapshotDir, err := r0.db.ExportDB()
 	if err != nil {
-		t.Log(err)
+		t.Error(err)
 	}
-	defer os.Remove("r_temp.db")
-	fmt.Println(r.Path)
+	sql := "SELECT id, name, age, height FROM tbl_test WHERE age=18 AND height > 175"
+
+	type User struct {
+		ID     int64  `json:"ID"`
+		Name   string `json:"Name"`
+		Age    int64  `json:"Age"`
+		Height int64  `json:"Height"`
+	}
+	var users []User
+	if err = r0.db.Raw(sql).Scan(&users); err != nil {
+		t.Error(err)
+	}
+
+	r1, err := ImportDB(snapshotDir, "testdb")
+	if err != nil {
+		t.Error(err)
+	}
+	var user1s []User
+	if err = r1.Raw(sql).Scan(&user1s); err != nil {
+		t.Error(err)
+	}
+
+	// 添加断言确保导入后的数据与原数据一致
+	if len(user1s) != len(users) {
+		t.Errorf("导入后的数据记录数量不一致: 原始 %d vs 导入后 %d", len(users), len(user1s))
+	}
+
+	for i := 0; i < len(users); i++ {
+		if i >= len(user1s) {
+			break
+		}
+		if users[i].ID != user1s[i].ID ||
+			users[i].Age != user1s[i].Age ||
+			users[i].Height != user1s[i].Height ||
+			users[i].Name != user1s[i].Name {
+			t.Errorf("记录 %d 不匹配:\n原始: %+v\n导入后: %+v", i, users[i], user1s[i])
+		}
+	}
+}
+func TestImportDBSigle(t *testing.T) {
+	defer func() {
+		os.Remove("r_temp.db")
+	}()
+	sql := "SELECT id, name, age, height FROM tbl_test WHERE age=18 AND height > 175"
+	r1, err := ImportDB("r_export", "testdb")
+	if err != nil {
+		t.Error(err)
+	}
+	var user1s []User
+	if err = r1.Raw(sql).Scan(&user1s); err != nil {
+		t.Error(err)
+	}
+	for _, user := range user1s {
+		fmt.Println("age:", user.Age)
+	}
 }
 
 type RaftDB struct {

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -23,8 +24,8 @@ const (
 type Store struct {
 	db       *DB
 	RaftDir  string
-	RaftBind string
-	mu       sync.Mutex
+	RaftAddr string
+	mu       sync.RWMutex
 	raft     *raft.Raft
 	logger   *log.Logger
 }
@@ -32,7 +33,7 @@ type Store struct {
 func NewStore(raftdir, raftAddr string) *Store {
 	s := &Store{}
 	s.RaftDir = raftdir
-	s.RaftBind = raftAddr
+	s.RaftAddr = raftAddr
 	s.logger = log.New(os.Stderr, "[store] ", log.LstdFlags)
 	return s
 }
@@ -46,11 +47,11 @@ func (s *Store) Open(LocalID string, db *DB) error {
 
 	// 设置网络传输, raftAddr 转成TCP地址结构
 	// 使用 raft.NewTCPTransport 创建一个 TCP 传输通道，让 Raft 节点可以收发消息
-	addr, err := net.ResolveTCPAddr("tcp", s.RaftBind)
+	addr, err := net.ResolveTCPAddr("tcp", s.RaftAddr)
 	if err != nil {
 		return err
 	}
-	transport, err := raft.NewTCPTransport(s.RaftBind, addr, 3, 10*time.Second, os.Stderr)
+	transport, err := raft.NewTCPTransport(s.RaftAddr, addr, 3, 10*time.Second, os.Stderr)
 	if err != nil {
 		return err
 	}
@@ -70,7 +71,7 @@ func (s *Store) Open(LocalID string, db *DB) error {
 		return err
 	}
 
-	rf, err := raft.NewRaft(config, (*fsm)(s), logStore, stableStore, snapshots, transport)
+	rf, err := raft.NewRaft(config, s, logStore, stableStore, snapshots, transport)
 	if err != nil {
 		return err
 	}
@@ -94,12 +95,42 @@ func (s *Store) Open(LocalID string, db *DB) error {
 	return nil
 }
 
-type fsm Store
 type SQLCommand struct {
-	SQL string `json:"sql"`
+	IsSelect bool
+	SQL      string `json:"sql"`
 }
 
-func (f *fsm) Apply(l *raft.Log) interface{} {
+func (s *Store) ApplyExec(sql string) error {
+	if s.raft.State() != raft.Leader {
+		return fmt.Errorf("not Leader")
+	}
+	c := &SQLCommand{
+		IsSelect: false,
+		SQL:      sql,
+	}
+	b, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+	f := s.raft.Apply(b, raftTimeout)
+	return f.Error()
+}
+
+// 提供查询
+func (s *Store) ApplyQuery(sql string, dest any) error {
+	if s.raft.State() != raft.Leader {
+		leaderAddr := string(s.raft.Leader())
+		if leaderAddr == "" {
+			return fmt.Errorf("no leader available")
+		}
+		return fmt.Errorf("not Leader, try:%v", leaderAddr)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.db.Raw(sql).Scan(&dest)
+}
+
+func (f *Store) Apply(l *raft.Log) interface{} {
 	var cmd SQLCommand
 	if err := json.Unmarshal(l.Data, &cmd); err != nil {
 		f.logger.Println("FSM Apply: Failed to unmarshal:", err)
@@ -108,6 +139,23 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 	// 执行sql
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	if cmd.IsSelect {
+		// 执行查询
+		var result interface{}
+		if err := f.db.Raw(cmd.SQL).Scan(&result); err != nil {
+			f.logger.Println("FSM Apply: Query error:", err)
+			return err
+		}
+		// 序列化查询结果
+		b, err := json.Marshal(result)
+		if err != nil {
+			f.logger.Println("FSM Apply: Marshal result error:", err)
+			return err
+		}
+		return b
+	}
+	
 	if err := f.db.Exec(cmd.SQL); err != nil {
 		f.logger.Println("FSM Apply: ExecSQL error:", err)
 		return err
@@ -115,24 +163,35 @@ func (f *fsm) Apply(l *raft.Log) interface{} {
 	return nil
 }
 
-func (f *fsm) Snapshot() (raft.FSMSnapshot, error) {
+func (f *Store) Snapshot() (raft.FSMSnapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	return &snapshot{db: f.db, logger: f.logger}, nil
 }
 
-func (f *fsm) Restore(rc io.ReadCloser) error {
+func (f *Store) Restore(rc io.ReadCloser) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	defer rc.Close()
 
-	tempDir, err := os.MkdirTemp("", "raft-restore-*")
+	tmpDir, err := os.MkdirTemp("", "raft-restore-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(tempDir)
-	if err := utils.UntarGz(rc, tempDir); err != nil {
+	defer os.RemoveAll(tmpDir)
+	if err = utils.UntarGz(rc, tmpDir); err != nil {
 		return err
 	}
+
+	// 删除之前的数据库
+	dbname := f.db.Path
+	_ = os.Remove(dbname)
+	db, err := ImportDB(tmpDir, dbname)
+	if err != nil {
+		return err
+	}
+	f.db = db
 	return nil
 }
 
