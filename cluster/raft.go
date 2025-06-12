@@ -30,9 +30,17 @@ type Store struct {
 	logger   *log.Logger
 }
 
-func NewStore(cfg ClusterNodeConfig) (*Store, error) {
+func NewStore(cfg *NodeConfig) (*Store, error) {
+	// 如果raft目录不存在就新建一个
+	// 如果 db 文件夹不存在也新建一个
 	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
 		return nil, fmt.Errorf("create raft_dir failed: %w", err)
+	}
+	dir := filepath.Dir(cfg.DBPath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
 	}
 
 	db := &storage.DB{Path: cfg.DBPath}
@@ -46,12 +54,12 @@ func NewStore(cfg ClusterNodeConfig) (*Store, error) {
 	s.logger = log.New(os.Stderr, "[store] ", log.LstdFlags)
 	return s, nil
 }
-func (s *Store) Open(cfg ClusterNodeConfig, baseCfg CommonRaftConfig) error {
+func (s *Store) Open(cfg *NodeConfig) error {
 	// 创建 Raft 配置
 	config := raft.DefaultConfig()
 	config.LocalID = raft.ServerID(cfg.NodeID)
-	config.SnapshotInterval = baseCfg.SnapshotInterval   // 至少间隔 3 分钟检查一次是否需要快照
-	config.SnapshotThreshold = baseCfg.SnapshotThreshold // 日志条目超过 100000 才创建快照
+	config.SnapshotInterval = cfg.SnapshotInterval   // 至少间隔 3 分钟检查一次是否需要快照
+	config.SnapshotThreshold = cfg.SnapshotThreshold // 日志条目超过 100000 才创建快照
 
 	// 设置网络传输, raftAddr 转成TCP地址结构
 	// 使用 raft.NewTCPTransport 创建一个 TCP 传输通道，让 Raft 节点可以收发消息
@@ -105,14 +113,15 @@ type SQLCommand struct {
 	SQL      string `json:"sql"`
 }
 type ExecSQLRsp struct {
-	data []byte
+	Data []byte
 	Err  error
 }
 
 func (s *Store) Exec(sql string) *ExecSQLRsp {
-	if s.raft.State() != raft.Leader {
-		return &ExecSQLRsp{Err: fmt.Errorf("not Leader")}
-	}
+	// 测试阶段允许各节点执行
+	// if s.raft.State() != raft.Leader {
+	// 	return &ExecSQLRsp{Err: fmt.Errorf("not Leader")}
+	// }
 	c := &SQLCommand{
 		IsSelect: false,
 		SQL:      sql,
@@ -127,8 +136,11 @@ func (s *Store) Exec(sql string) *ExecSQLRsp {
 		return &ExecSQLRsp{Err: err}
 	}
 	f := s.raft.Apply(b, defaultRaftTimeout)
-
-	return f.Response().(*ExecSQLRsp)
+	resp := f.Response()
+	if resp == nil {
+		return &ExecSQLRsp{Err: fmt.Errorf("raft apply returned nil")}
+	}
+	return resp.(*ExecSQLRsp)
 }
 
 func (s *Store) Join(nodeID, addr string) error {
@@ -195,4 +207,9 @@ func (s *Store) Status() (StoreStatus, error) {
 		Followers: followers,
 	}
 	return status, nil
+}
+func (s *Store) Tables() ([]byte, error) {
+	alltables, err := s.db.GetAllTables()
+	jsonbytes, _ := json.Marshal(alltables)
+	return jsonbytes, err
 }

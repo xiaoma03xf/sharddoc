@@ -1,0 +1,11 @@
+node_id: node1
+raft_addr: 127.0.0.1:28001
+http_addr: 127.0.0.1:29001
+raft_dir: ./clusterdb/raft/node1
+db_path: ./clusterdb/data/node1.db
+bootstrap: true
+
+# common config
+raft_timeout: 10s
+snapshot_interval: 30s
+snapshot_threshold: 100000

@@ -21,7 +21,7 @@ func (f *Store) Apply(l *raft.Log) interface{} {
 	var cmd SQLCommand
 	if err := json.Unmarshal(l.Data, &cmd); err != nil {
 		f.logger.Println("FSM Apply: Failed to unmarshal:", err)
-		return err
+		return &ExecSQLRsp{Err: err}
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -31,22 +31,22 @@ func (f *Store) Apply(l *raft.Log) interface{} {
 		var result *storage.QueryResult
 		if result = f.db.Raw(cmd.SQL); result.Err != nil {
 			f.logger.Println("FSM Apply: Query error:", result.Err)
-			return result.Err
+			return &ExecSQLRsp{Err: result.Err}
 		}
 		// 序列化查询结果
 		b, err := json.Marshal(result)
 		if err != nil {
 			f.logger.Println("FSM Apply: Marshal result error:", err)
-			return err
+			return &ExecSQLRsp{Err: err}
 		}
-		return &ExecSQLRsp{data: b, Err: err}
+		return &ExecSQLRsp{Data: b, Err: err}
 	}
 
 	if err := f.db.Exec(cmd.SQL); err != nil {
 		f.logger.Println("FSM Apply: ExecSQL error:", err)
-		return err
+		return &ExecSQLRsp{Err: err}
 	}
-	return &ExecSQLRsp{data: []byte("OK"), Err: nil}
+	return &ExecSQLRsp{Data: []byte("OK"), Err: nil}
 }
 
 func (f *Store) Snapshot() (raft.FSMSnapshot, error) {

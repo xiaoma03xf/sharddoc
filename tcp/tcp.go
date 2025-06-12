@@ -14,7 +14,6 @@ import (
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
 )
 
-type HandleFunc func(ctx context.Context, conn net.Conn)
 type Handler interface {
 	Handle(ctx context.Context, conn net.Conn)
 	Close() error

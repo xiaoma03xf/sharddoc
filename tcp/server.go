@@ -8,33 +8,92 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"os/signal"
 
 	"github.com/xiaoma03xf/sharddoc/cluster"
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
-)
-
-const (
-	TypeExec    = 0x01
-	TypeJoin    = 0x02
-	TypeStatus  = 0x03
-	TypeOKResp  = 0x81
-	TypeBadResp = 0x82
 )
 
 type Node interface {
 	Exec(sql string) *cluster.ExecSQLRsp
 	Join(nodeID string, addr string) error
 	Status() (cluster.StoreStatus, error)
+	Tables() ([]byte, error)
 }
 
 // Servcie provides HTTP service
+type HandleFunc func(ctx context.Context, conn net.Conn, data map[string]interface{})
 type Service struct {
-	Addr string
-	Node Node
+	Addr     string
+	Node     Node
+	Handlers map[byte]HandleFunc
 }
 
 func NewService(addr string, node Node) *Service {
-	return &Service{Addr: addr, Node: node}
+	s := new(Service)
+	s.Addr = addr
+	s.Node = node
+	s.RegisterHandlers()
+	return s
+}
+func (s *Service) Handle(ctx context.Context, conn net.Conn) {
+	defer conn.Close()
+	for {
+		msgType, data, err := ReadRequest(conn)
+		logger.Info("Received message:", msgType, data)
+		if err != nil {
+			if err == io.EOF {
+				logger.Info("client disabled connection")
+			} else {
+				logger.Info("read request err", err)
+			}
+			return
+		}
+		handler, ok := s.Handlers[msgType]
+		if !ok {
+			logger.Warn(fmt.Sprintf("未知消息类型: %v\n", msgType))
+			continue
+		}
+		handler(ctx, conn, data)
+	}
+}
+
+func (s *Service) Close() error {
+	return nil
+}
+
+func BootstrapCluster(cfgPath string) {
+	nodeCfg, err := cluster.LoadNodeConfig(cfgPath)
+	if err != nil {
+		panic(err)
+	}
+	s, err := cluster.NewStore(nodeCfg)
+	if err != nil {
+		panic(err)
+	}
+	err = s.Open(nodeCfg)
+	if err != nil {
+		panic(err)
+	}
+	// If join was specified, make the join request.
+	if nodeCfg.JoinAddr != "" {
+		logger.Info("start join in cluster...")
+		if err := Join(nodeCfg.JoinAddr, nodeCfg.RaftAddr, nodeCfg.NodeID); err != nil {
+			logger.Warn(fmt.Sprintf("failed to join node at %s: %s", nodeCfg.JoinAddr, err.Error()))
+		}
+	}
+	// start tcp server
+	service := NewService(nodeCfg.HttpAddr, s)
+	go ListenAndServeWithSignal(service.Addr, service)
+
+	// we're up and running!
+	logger.Info(fmt.Sprintf("node started successfully, listening on: http://%s", nodeCfg.HttpAddr))
+
+	terminate := make(chan os.Signal, 1)
+	signal.Notify(terminate, os.Interrupt)
+	<-terminate
+	logger.Info("hraftd exiting")
 }
 
 func ReadRequest(conn net.Conn) (byte, map[string]interface{}, error) {
@@ -68,7 +127,7 @@ func BuildTcpInfo(datatype byte, val map[string]interface{}) ([]byte, error) {
 		if !MapFieldCheck([]string{"node_id", "addr"}, val) {
 			return nil, fmt.Errorf("Join[%v]消息类型缺少某些字段", TypeJoin)
 		}
-	case TypeStatus:
+	case TypeStatus, TypeShowTbl:
 		// Valid types, do nothing
 	default:
 		return nil, fmt.Errorf("datatype unsupported: %v", datatype)
@@ -99,62 +158,8 @@ func SendResponse(conn net.Conn, datatype byte, payload []byte) error {
 	_, err := conn.Write(buf.Bytes())
 	return err
 }
-func (s *Service) Handle(ctx context.Context, conn net.Conn) {
-	defer conn.Close()
-	for {
-		msgType, data, err := ReadRequest(conn)
-		if err != nil {
-			if err == io.EOF {
-				logger.Info("client disabled connection")
-			} else {
-				logger.Info("read request err", err)
-			}
-		}
-		switch msgType {
-		case TypeExec:
-			sqlStr, ok := data["sql"].(string)
-			if !ok {
-				fmt.Println("Exec 请求缺少 sql 字段或格式错误")
-				continue
-			}
-			result := s.Node.Exec(sqlStr)
-			if result.Err != nil {
-				_ = SendResponse(conn, TypeBadResp, []byte(err.Error()))
-			}
-			resp, _ := json.Marshal(result)
-			SendResponse(conn, TypeOKResp, resp)
-
-		case TypeJoin:
-			nodeID, ok1 := data["node_id"].(string)
-			addr, ok2 := data["addr"].(string)
-			if !ok1 || !ok2 {
-				fmt.Println("Join 请求缺少 node_id 或 addr 字段或格式错误")
-				continue
-			}
-			err := s.Node.Join(nodeID, addr)
-			resp := map[string]string{"status": "ok"}
-			if err != nil {
-				resp["status"] = "fail"
-				resp["error"] = err.Error()
-			}
-			respData, _ := json.Marshal(resp)
-			SendResponse(conn, respData)
-
-		case TypeStatus:
-			status, err := s.Node.Status()
-			var resp []byte
-			if err != nil {
-				resp, _ = json.Marshal(map[string]string{
-					"error": err.Error(),
-				})
-			} else {
-				resp, _ = json.Marshal(status)
-			}
-			SendResponse(conn, resp)
-		default:
-			fmt.Printf("未知消息类型: %v\n", msgType)
-		}
-	}
+func SendBadResponse(conn net.Conn, msg []byte) error {
+	return SendResponse(conn, TypeBadResp, msg)
 }
 
 func MapFieldCheck(fields []string, mp map[string]interface{}) bool {
@@ -164,4 +169,29 @@ func MapFieldCheck(fields []string, mp map[string]interface{}) bool {
 		}
 	}
 	return true
+}
+
+func Join(joinAddr, raftAddr, nodeID string) error {
+	fmt.Println(joinAddr)
+	data := make(map[string]interface{})
+	data["node_id"] = nodeID
+	data["addr"] = raftAddr
+	joinMsg, err := BuildTcpInfo(TypeJoin, data)
+	if err != nil {
+		return err
+	}
+	conn, err := net.Dial("tcp", joinAddr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	conn.Write(joinMsg)
+	buf := make([]byte, 1024)
+	n, err := conn.Read(buf)
+	if err != nil {
+		logger.Info(fmt.Sprintf("join response read error:%v", err))
+	} else {
+		logger.Info("join response:", string(buf[:n]))
+	}
+	return nil
 }
