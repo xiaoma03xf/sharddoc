@@ -25,6 +25,8 @@ require (
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1
+	github.com/google/uuid v1.6.0
+	github.com/hashicorp/go-uuid v1.0.3
 	github.com/hashicorp/raft-boltdb v0.0.0-20250603080355-5acfa2a95991
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sys v0.18.0

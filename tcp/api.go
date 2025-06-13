@@ -26,13 +26,13 @@ func (s *Service) RegisterHandlers() {
 		TypeShowTbl: s.HandleShowTables,
 	}
 }
-func (s *Service) HandleExec(ctx context.Context, conn net.Conn, data map[string]interface{}) {
-	sql, ok := data["sql"].(string)
+func (s *Service) HandleExec(ctx context.Context, conn net.Conn, raftReq *RaftRequest) {
+	sql, ok := raftReq.Payload["sql"].(string)
 	if !ok {
 		_ = SendBadResponse(conn, []byte("Exec request is missing the 'sql' field or the format is correct"))
 		return
 	}
-	result := s.Node.Exec(sql)
+	result := s.Node.Exec(raftReq)
 	if result == nil {
 		_ = SendBadResponse(conn, []byte("Exec returned nil result"))
 		return
@@ -47,14 +47,14 @@ func (s *Service) HandleExec(ctx context.Context, conn net.Conn, data map[string
 	resp, _ := json.Marshal(result.Data)
 	_ = SendResponse(conn, TypeOKResp, resp)
 }
-func (s *Service) HandleJoin(ctx context.Context, conn net.Conn, data map[string]interface{}) {
-	nodeID, ok1 := data["node_id"].(string)
-	addr, ok2 := data["addr"].(string)
+func (s *Service) HandleJoin(ctx context.Context, conn net.Conn, raftReq *RaftRequest) {
+	_, ok1 := raftReq.Payload["node_id"].(string)
+	_, ok2 := raftReq.Payload["addr"].(string)
 	if !ok1 || !ok2 {
 		_ = SendBadResponse(conn, []byte("Join request is missing the 'node_id' field or 'addr' field"))
 		return
 	}
-	err := s.Node.Join(nodeID, addr)
+	err := s.Node.Join(raftReq)
 	if err != nil {
 		_ = SendBadResponse(conn, []byte(err.Error()))
 		return
@@ -62,8 +62,8 @@ func (s *Service) HandleJoin(ctx context.Context, conn net.Conn, data map[string
 	_ = SendResponse(conn, TypeOKResp, []byte("OK"))
 }
 
-func (s *Service) HandleStatus(ctx context.Context, conn net.Conn, data map[string]interface{}) {
-	status, err := s.Node.Status()
+func (s *Service) HandleStatus(ctx context.Context, conn net.Conn, raftReq *RaftRequest) {
+	status, err := s.Node.Status(raftReq)
 	if err != nil {
 		logger.Warn(fmt.Sprintf("get node :%v err:%v", s.Addr, err))
 	} else {
@@ -72,8 +72,8 @@ func (s *Service) HandleStatus(ctx context.Context, conn net.Conn, data map[stri
 	}
 }
 
-func (s *Service) HandleShowTables(ctx context.Context, conn net.Conn, data map[string]interface{}) {
-	tblInfo, err := s.Node.Tables()
+func (s *Service) HandleShowTables(ctx context.Context, conn net.Conn, raftReq *RaftRequest) {
+	tblInfo, err := s.Node.Tables(raftReq)
 	if err != nil {
 		logger.Warn("get all tables err", err)
 		_ = SendBadResponse(conn, []byte(err.Error()))

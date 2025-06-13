@@ -11,26 +11,26 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/xiaoma03xf/sharddoc/cluster"
+	"github.com/google/uuid"
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
 )
 
-type Node interface {
-	Exec(sql string) *cluster.ExecSQLRsp
-	Join(nodeID string, addr string) error
-	Status() (cluster.StoreStatus, error)
-	Tables() ([]byte, error)
+type RaftNode interface {
+	Exec(*RaftRequest) *ExecSQLRsp
+	Join(*RaftRequest) error
+	Status(*RaftRequest) (StoreStatus, error)
+	Tables(*RaftRequest) ([]byte, error)
 }
 
 // Servcie provides HTTP service
-type HandleFunc func(ctx context.Context, conn net.Conn, data map[string]interface{})
+type HandleFunc func(context.Context, net.Conn, *RaftRequest)
 type Service struct {
 	Addr     string
-	Node     Node
+	Node     RaftNode
 	Handlers map[byte]HandleFunc
 }
 
-func NewService(addr string, node Node) *Service {
+func NewService(addr string, node RaftNode) *Service {
 	s := new(Service)
 	s.Addr = addr
 	s.Node = node
@@ -40,8 +40,12 @@ func NewService(addr string, node Node) *Service {
 func (s *Service) Handle(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	for {
-		msgType, data, err := ReadRequest(conn)
-		logger.Info("Received message:", msgType, data)
+		msgTyps, raftReq, err := ReadRequest(conn)
+		if msgTyps == 0 || raftReq == nil {
+			_ = SendBadResponse(conn, []byte("Unexpected syntax..."))
+			continue
+		}
+		logger.Info("Received message:", raftReq.Payload)
 		if err != nil {
 			if err == io.EOF {
 				logger.Info("client disabled connection")
@@ -50,12 +54,12 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) {
 			}
 			return
 		}
-		handler, ok := s.Handlers[msgType]
+		handler, ok := s.Handlers[raftReq.DataType]
 		if !ok {
-			logger.Warn(fmt.Sprintf("未知消息类型: %v\n", msgType))
+			logger.Warn(fmt.Sprintf("未知消息类型: %v\n", raftReq.DataType))
 			continue
 		}
-		handler(ctx, conn, data)
+		handler(ctx, conn, raftReq)
 	}
 }
 
@@ -64,11 +68,11 @@ func (s *Service) Close() error {
 }
 
 func BootstrapCluster(cfgPath string) {
-	nodeCfg, err := cluster.LoadNodeConfig(cfgPath)
+	nodeCfg, err := LoadNodeConfig(cfgPath)
 	if err != nil {
 		panic(err)
 	}
-	s, err := cluster.NewStore(nodeCfg)
+	s, err := NewStore(nodeCfg)
 	if err != nil {
 		panic(err)
 	}
@@ -96,7 +100,7 @@ func BootstrapCluster(cfgPath string) {
 	logger.Info("hraftd exiting")
 }
 
-func ReadRequest(conn net.Conn) (byte, map[string]interface{}, error) {
+func ReadRequest(conn net.Conn) (byte, *RaftRequest, error) {
 	header := make([]byte, 5)
 	if _, err := io.ReadFull(conn, header); err != nil {
 		return 0, nil, err
@@ -108,39 +112,46 @@ func ReadRequest(conn net.Conn) (byte, map[string]interface{}, error) {
 		return 0, nil, err
 	}
 	// payload 数据反序列化为map
-	var data map[string]interface{}
-	if err := json.Unmarshal(payload, &data); err != nil {
+	var raftRequest RaftRequest
+	if err := json.Unmarshal(payload, &raftRequest); err != nil {
 		return 0, nil, err
 	}
-	return msgType, data, nil
+	return msgType, &raftRequest, nil
+}
+
+type RaftRequest struct {
+	RequestID string
+	DataType  byte
+	Payload   map[string]interface{}
 }
 
 // val 可以为ExecPayload, JoinPayload, 主要用于客户端构造请求
-func BuildTcpInfo(datatype byte, val map[string]interface{}) ([]byte, error) {
-	// tcp 消息必须是指定类型
-	switch datatype {
+func BuildTcpInfo(req *RaftRequest) ([]byte, error) {
+	if req.RequestID == "" {
+		req.RequestID = uuid.NewString()
+	}
+	switch req.DataType {
 	case TypeExec:
-		if !MapFieldCheck([]string{"sql"}, val) {
+		if !MapFieldCheck([]string{"sql"}, req.Payload) {
 			return nil, fmt.Errorf("Exec[%v]消息类型缺少某些字段", TypeExec)
 		}
 	case TypeJoin:
-		if !MapFieldCheck([]string{"node_id", "addr"}, val) {
+		if !MapFieldCheck([]string{"node_id", "addr"}, req.Payload) {
 			return nil, fmt.Errorf("Join[%v]消息类型缺少某些字段", TypeJoin)
 		}
 	case TypeStatus, TypeShowTbl:
 		// Valid types, do nothing
 	default:
-		return nil, fmt.Errorf("datatype unsupported: %v", datatype)
+		return nil, fmt.Errorf("datatype unsupported: %v", req.DataType)
 	}
-
-	// Json 编码
-	payload, err := json.Marshal(val)
+	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
 	// 构造 TCP 数据：type(1 byte) + length(4 bytes) + payload
+	// TODO 外type结合内type
 	var buf bytes.Buffer
-	buf.WriteByte(datatype)
+	buf.WriteByte(req.DataType)
 	binary.Write(&buf, binary.BigEndian, uint32(len(payload)))
 	buf.Write(payload)
 	return buf.Bytes(), nil
@@ -172,11 +183,15 @@ func MapFieldCheck(fields []string, mp map[string]interface{}) bool {
 }
 
 func Join(joinAddr, raftAddr, nodeID string) error {
-	fmt.Println(joinAddr)
 	data := make(map[string]interface{})
 	data["node_id"] = nodeID
 	data["addr"] = raftAddr
-	joinMsg, err := BuildTcpInfo(TypeJoin, data)
+	//TypeJoin, data
+	joinMsg, err := BuildTcpInfo(&RaftRequest{
+		RequestID: uuid.New().String(),
+		DataType:  TypeJoin,
+		Payload:   data,
+	})
 	if err != nil {
 		return err
 	}

@@ -1054,5 +1054,3 @@ func (r *RaftDB) raftdbDispose() {
 	r.db.Close()
 	_ = os.Remove(fmt.Sprintf("%v.db", r.db.Path))
 }
-func TestRaftNodes(t *testing.T) {
-}

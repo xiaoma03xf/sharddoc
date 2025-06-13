@@ -58,16 +58,26 @@ func GenerateTestDB() *R {
 }
 
 func TestCreateTable(t *testing.T) {
+	// creatTable := `
+	// CREATE TABLE users (
+	//     id INT64,
+	//     name BYTES,
+	//     age INT64,
+	// 	height INT64,
+	// 	PRIMARY KEY (id),
+	//     INDEX (age, height)
+	// );
+	// `
 	creatTable := `
 	CREATE TABLE users (
-        id INT64,
-        name BYTES,
-        age INT64,
+	    id INT64,
+	    name BYTES,
+	    age INT64,
 		height INT64,
 		PRIMARY KEY (id),
-        INDEX (age, height)
-    );
-	`
+		INDEX (name),
+	    INDEX (age, height)
+	);`
 	tableDef := VisitTree(creatTable).(*TableDef)
 	fmt.Println(tableDef)
 }
