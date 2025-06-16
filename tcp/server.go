@@ -45,7 +45,6 @@ func (s *Service) Handle(ctx context.Context, conn net.Conn) {
 			_ = SendBadResponse(conn, []byte("Unexpected syntax..."))
 			continue
 		}
-		logger.Info("Received message:", raftReq.Payload)
 		if err != nil {
 			if err == io.EOF {
 				logger.Info("client disabled connection")
@@ -163,6 +162,7 @@ func SendResponse(conn net.Conn, datatype byte, payload []byte) error {
 	buf.WriteByte(datatype)
 
 	if err := binary.Write(&buf, binary.BigEndian, uint32(len(payload))); err != nil {
+		logger.Warn(fmt.Sprintf("sendresponse err:%v", err))
 		return err
 	}
 	buf.Write(payload)

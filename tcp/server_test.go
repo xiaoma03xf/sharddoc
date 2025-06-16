@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/xiaoma03xf/sharddoc/lib/utils"
 	"github.com/xiaoma03xf/sharddoc/storage"
 )
 
@@ -242,14 +244,14 @@ func TestCteatables(t *testing.T) {
 	{
 		execMap := map[string]interface{}{
 			"sql": `
-CREATE TABLE students (
-        id INT64,
-        age INT64,
-		lol INT64,
-		PRIMARY KEY (id),
-		INDEX (lol)
-    );
-	`,
+	CREATE TABLE students (
+	        id INT64,
+	        age INT64,
+			lol INT64,
+			PRIMARY KEY (id),
+			INDEX (lol)
+	    );
+		`,
 		}
 		execMsg, err := BuildTcpInfo(&RaftRequest{
 			RequestID: uuid.New().String(),
@@ -270,6 +272,7 @@ CREATE TABLE students (
 	}
 
 	// 检查各个节点创建表的情况
+	time.Sleep(1 * time.Second)
 	tablesMsg, err := BuildTcpInfo(&RaftRequest{
 		RequestID: uuid.New().String(),
 		DataType:  TypeShowTbl,
@@ -284,7 +287,7 @@ CREATE TABLE students (
 	}
 	//create table server reply
 	// [{"Name":"users","Types":[2,1,2,2],"Cols":["id","name","age","height"],"Indexes":[["id"],["age","height","id"]],"Prefixes":[100,101]}]
-	fmt.Println("create table server reply", string(resp.Body))
+	// fmt.Println("create table server reply", string(resp.Body))
 
 	var tables []storage.TableDef
 	if err = json.Unmarshal(resp.Body, &tables); err != nil {
@@ -306,7 +309,6 @@ CREATE TABLE students (
 	if err1 != nil || err2 != nil || err3 != nil {
 		t.Fatal(err)
 	}
-	fmt.Println(t1, t2, t3)
 	assert.Equal(t, t1, t2)
 	assert.Equal(t, t1, t3)
 }
@@ -314,6 +316,8 @@ CREATE TABLE students (
 func TestInsertData(t *testing.T) {
 	// defer func() {
 	// 	os.RemoveAll("../clusterdb")
+	// 	os.Remove("./test_data.json")
+	// 	os.Remove("./testdb")
 	// }()
 	// bootCluster(t)
 	// 默认node1 为leader节点
@@ -332,7 +336,6 @@ func TestInsertData(t *testing.T) {
         age INT64,
 		height INT64,
 		PRIMARY KEY (id),
-		INDEX (name),
         INDEX (age, height)
     );
 	`,
@@ -351,8 +354,104 @@ func TestInsertData(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		// raft apply returned nil 130
-		fmt.Println(string(resp.Body), resp.Type)
+		fmt.Println(string(resp.Body))
 	}
 
+	// 持久化测试数据,便于观察
+	filePath := "test_data.json"
+	datacnt := 3
+	recs, err := utils.GenerateData(filePath, datacnt)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	// 并发插入，测试时序竞态功能
+	fmt.Println("测试数据长度", len(recs))
+	var wg sync.WaitGroup
+	for _, rec_data := range recs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cols := []string{"id", "name", "age", "height"}
+			args := []interface{}{rec_data.ID, rec_data.Name, rec_data.Age, rec_data.Height}
+			execMap := map[string]interface{}{
+				"sql": storage.BuildInsertSQL("users", cols, args),
+			}
+			execMsg, err := BuildTcpInfo(&RaftRequest{
+				RequestID: uuid.New().String(),
+				DataType:  TypeExec,
+				Payload:   execMap,
+			})
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			conn.Write(execMsg)
+
+			resp, err := ReadResponse(conn)
+			if err != nil {
+				t.Error(err)
+			}
+			// raft apply returned nil 130
+			assert.Equal(t, string(resp.Body), "OK")
+		}()
+	}
+	wg.Wait()
+	time.Sleep(2 * time.Second)
+
+	// 检查是否插入成功
+	node1db := storage.DB{Path: "../clusterdb/data/node1.db"}
+	node2db := storage.DB{Path: "../clusterdb/data/node2.db"}
+	node3db := storage.DB{Path: "../clusterdb/data/node3.db"}
+	_ = node1db.Open()
+	_ = node2db.Open()
+	_ = node3db.Open()
+	res1 := node1db.Raw("SELECT name, id FROM users WHERE age >= 0")
+	res2 := node2db.Raw("SELECT name, id FROM users WHERE age >= 0")
+	res3 := node3db.Raw("SELECT name, id FROM users WHERE age >= 0")
+	assert.Equal(t, len(res1.Recs), datacnt)
+	assert.Equal(t, len(res1.Recs), len(res2.Recs), len(res3.Recs))
+
+	// 测试非分布式数据对比
+	{
+		dbpath := "./testdb"
+		db := storage.DB{Path: dbpath}
+		_ = db.Open()
+
+		tdef := &storage.TableDef{
+			Name:  "users",
+			Cols:  []string{"id", "name", "age", "height"},
+			Types: []uint32{storage.TYPE_INT64, storage.TYPE_BYTES, storage.TYPE_INT64, storage.TYPE_INT64},
+			Indexes: [][]string{
+				{"id"},            // 主键索引
+				{"age", "height"}, // 二级索引（复合索引）
+			},
+		}
+		tx := storage.DBTX{}
+		db.Begin(&tx)
+		tx.TableNew(tdef)
+		db.Commit(&tx)
+
+		// 添加测试数据
+		for _, rec_data := range recs {
+			cols := []string{"id", "name", "age", "height"}
+			args := []interface{}{rec_data.ID, rec_data.Name, rec_data.Age, rec_data.Height}
+			sql := storage.BuildInsertSQL("users", cols, args)
+
+			tx := storage.DBTX{}
+			db.Begin(&tx)
+			if err := db.Exec(sql); err != nil {
+				t.Error(err)
+				return
+			}
+			_ = db.Commit(&tx)
+		}
+		res4 := db.Raw("SELECT name, id FROM users WHERE age >= 0")
+		assert.Equal(t, len(res1.Recs), len(res4.Recs))
+	}
+
+}
+
+func TestBootTestNode3(t *testing.T) {
+	BootstrapCluster("../node3.yaml")
 }

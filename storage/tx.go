@@ -151,7 +151,7 @@ func (kv *KV) Commit(tx *KVTX) error {
 			assert(deleted == modified) // assured by conflict detection
 		case FLAG_UPDATED:
 			// 不是旧值, 或者说新修改的值和旧值不相等的时候, 标记modified
-			modified = (!isOld || !bytes.Equal(oldVal, val[1:]))
+			modified = !isOld || !bytes.Equal(oldVal, val[1:])
 			updated, err := kv.tree.Update(&UpdateReq{Key: key, Val: val[1:]})
 			assert(err == nil)          // can only fail by length limit
 			assert(updated == modified) // assured by conflict detection

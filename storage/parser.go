@@ -588,95 +588,109 @@ func (db *DB) Raw(sql string) (q *QueryResult) {
 	return
 }
 
-// 增删改,建表
-func (db *DB) Exec(sql string) error {
-	tx := DBTX{}
-	db.Begin(&tx)
+func (db *DB) WithTx(fn func(tx *DBTX) error) (err error) {
+	tx := &DBTX{}
+	db.Begin(tx)
 
-	execres := VisitTree(sql)
-	switch res := execres.(type) {
-	case *TableDef:
-		// 创表语句
-		if err := tx.TableNew(res); err != nil {
-			logger.Warn(sql, "create table err:", err)
-			db.Abort(&tx)
+	defer func() {
+		if r := recover(); r != nil {
+			if !tx.kv.done {
+				db.Abort(tx)
+			}
+			panic(r)
+		} else if err != nil && !tx.kv.done {
+			db.Abort(tx)
 		}
-	case *InsertRes:
-		if _, err := tx.Insert(res.TableName, *res.Rec); err != nil {
-			logger.Warn(sql, "insert data err:", err)
-			db.Abort(&tx)
-			return fmt.Errorf("insert data %v, err:%v", res.Rec, err)
-		}
-	case *UpdateRes:
-		if res.Err != nil {
-			logger.Warn(sql, "update data err:", res.Err)
-			db.Abort(&tx)
-			return res.Err
-		}
-		// 1.根据条件查询出需要更新的记录
-		if res.Scan == nil {
-			logger.Warn(sql, "update data err: scan is nil")
-			db.Abort(&tx)
-			return fmt.Errorf("update data err: scan is nil")
-		}
-		if err := tx.Scan(res.TableName, res.Scan); err != nil {
-			logger.Warn(sql, "update data err:", err)
-			db.Abort(&tx)
-		}
-		Rec := reduceSelectData(res.Scan)
+	}()
 
-		// 2.更新记录
-		for _, rec := range Rec {
-			// 遍历每一条需要更新的值
-			for col, newval := range res.UpdateMp {
-				// 依次更新查询记录中的值
-				for i, v := range rec.Cols {
-					if v == col {
-						switch rec.Vals[i].Type {
-						case TYPE_INT64:
-							newvalInt, _ := strconv.ParseInt(newval, 10, 64)
-							rec.Vals[i].I64 = newvalInt
-						case TYPE_BYTES:
-							rec.Vals[i].Str = []byte(newval)
-						default:
-							db.Abort(&tx)
-							return fmt.Errorf("unsupported type for update")
-						}
+	err = fn(tx)
+	if err != nil {
+		return err
+	}
+
+	return db.Commit(tx)
+}
+func (db *DB) execCreateTable(tx *DBTX, def *TableDef) error {
+	return tx.TableNew(def)
+}
+
+func (db *DB) execInsert(tx *DBTX, tablename string, rec Record) error {
+	_, err := tx.Insert(tablename, rec)
+	return err
+}
+func (db *DB) execUpdate(tx *DBTX, req *UpdateRes) error {
+	if req.Err != nil {
+		logger.Warn(fmt.Sprintf("execUpdate err:%v", req.Err.Error()))
+		return req.Err
+	}
+	// 根据条件查询出需要更新的记录
+	// 依次更新后再插入回去
+	if req.Scan == nil {
+		return fmt.Errorf("scan is nil")
+	}
+	if err := tx.Scan(req.TableName, req.Scan); err != nil {
+		return err
+	}
+	recs := reduceSelectData(req.Scan)
+
+	for _, rec := range recs {
+		for col, newval := range req.UpdateMp {
+			for i, v := range rec.Cols {
+				if v == col {
+					switch rec.Vals[i].Type {
+					case TYPE_INT64:
+						newvalInt, _ := strconv.ParseInt(newval, 10, 64)
+						rec.Vals[i].I64 = newvalInt
+					case TYPE_BYTES:
+						rec.Vals[i].Str = []byte(newval)
+					default:
+						return fmt.Errorf("unsupported type for update")
 					}
 				}
 			}
-			_, err := tx.Update(res.TableName, rec)
-			if err != nil {
-				logger.Warn(sql, "update data err:", err)
-				db.Abort(&tx)
-				return fmt.Errorf("updata rec %v, err: %v", rec, err)
-			}
 		}
-	case *DelRes:
-		// 1.根据条件查询出需要更新的记录
-		if res.Scan == nil {
-			logger.Warn(sql, "update data err: scan is nil")
-			db.Abort(&tx)
-			return fmt.Errorf("update data err: scan is nil")
+		if _, err := tx.Update(req.TableName, rec); err != nil {
+			return err
 		}
-		if err := tx.Scan(res.TableName, res.Scan); err != nil {
-			logger.Warn(sql, "update data err:", err)
-			db.Abort(&tx)
-		}
-		Rec := reduceSelectData(res.Scan)
-		for _, rec := range Rec {
-			_, err := tx.Delete(res.TableName, rec)
-			if err != nil {
-				logger.Warn(sql, "delete data err:", err)
-				db.Abort(&tx)
-				return fmt.Errorf("delete rec %v, err: %v", rec, err)
-			}
-		}
-	default:
-		return fmt.Errorf("unsupported sql type")
 	}
+	return nil
+}
+func (db *DB) execDelete(tx *DBTX, req *DelRes) error {
+	// 根据条件查询出需要更新的记录, 直接删除
+	if req.Scan == nil {
+		return fmt.Errorf("scan is nil")
+	}
+	if err := tx.Scan(req.TableName, req.Scan); err != nil {
+		return err
+	}
+	recs := reduceSelectData(req.Scan)
+	for _, rec := range recs {
+		_, err := tx.Delete(req.TableName, rec)
+		if err != nil {
+			return fmt.Errorf("delete rec %v, err: %v", rec, err)
+		}
+	}
+	return nil
+}
 
-	return db.Commit(&tx)
+// 增删改,建表
+func (db *DB) Exec(sql string) error {
+	return db.WithTx(func(tx *DBTX) error {
+		execres := VisitTree(sql)
+
+		switch res := execres.(type) {
+		case *TableDef:
+			return db.execCreateTable(tx, res)
+		case *InsertRes:
+			return db.execInsert(tx, res.TableName, *res.Rec)
+		case *UpdateRes:
+			return db.execUpdate(tx, res)
+		case *DelRes:
+			return db.execDelete(tx, res)
+		default:
+			return fmt.Errorf("unsupported sql type")
+		}
+	})
 }
 func BuildInsertSQL(table string, columns []string, values []interface{}) string {
 	var cols string

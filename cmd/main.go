@@ -3,9 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
+	"github.com/xiaoma03xf/sharddoc/lib/utils"
 	"github.com/xiaoma03xf/sharddoc/tcp"
 )
 
@@ -13,6 +15,11 @@ var cfgpath string
 
 func init() {
 	flag.StringVar(&cfgpath, "config", "", "Bootstrap node thorough this path")
+	// log.SetFlags(log.LstdFlags | log.Llongfile)
+	log.SetOutput(&utils.InterceptWriter{
+		W:     os.Stderr,
+		Block: "Rollback failed: tx closed",
+	})
 }
 func main() {
 	defer func() {

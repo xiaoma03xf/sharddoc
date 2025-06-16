@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/xiaoma03xf/sharddoc/lib"
+	"github.com/xiaoma03xf/sharddoc/lib/logger"
 	"github.com/xiaoma03xf/sharddoc/storage"
 )
 
@@ -23,20 +24,28 @@ func (f *Store) Apply(l *raft.Log) interface{} {
 	var req RaftRequest
 	_ = json.Unmarshal(l.Data, &req)
 
+	// do task
 	rsp := f.applyBusinessLogic(req.DataType, req.Payload)
-	f.mu.Lock()
-	if ch, ok := f.applyWaiters[req.RequestID]; ok {
-		close(ch)
-		delete(f.applyWaiters, req.RequestID)
-	}
-	f.mu.Unlock()
 
+	if f.raft.State() == raft.Leader {
+		f.mu.Lock()
+		if ch, ok := f.applyWaiters[req.RequestID]; ok {
+			close(ch)
+			delete(f.applyWaiters, req.RequestID)
+		} else {
+			logger.Warn("unexpected err occur, no channel waited?", "requestID", req.RequestID)
+		}
+		f.mu.Unlock()
+	}
 	return rsp
 }
 
 func (f *Store) applyBusinessLogic(datatype byte, payload map[string]interface{}) *ExecSQLRsp {
 	// TODO 数据库相关操作封装, 目前仅支持增删查改, 建表
 	sql, _ := payload["sql"].(string)
+
+	logger.Info(fmt.Sprintf("statue:%v handle sql:%v", f.raft.State(), sql))
+
 	// 查询相关操作
 	if strings.HasPrefix(strings.ToLower(sql), "select") {
 		queryRaw := f.db.Raw(sql)
@@ -50,16 +59,7 @@ func (f *Store) applyBusinessLogic(datatype byte, payload map[string]interface{}
 	return &ExecSQLRsp{Data: []byte("OK")}
 }
 
-func (f *Store) WaitForApply(requestID string, timeout time.Duration) error {
-	ch := make(chan struct{})
-
-	f.mu.Lock()
-	if _, exists := f.applyWaiters[requestID]; exists {
-		return fmt.Errorf("duplicate request ID: %s", requestID)
-	}
-	f.applyWaiters[requestID] = ch
-	f.mu.Unlock()
-
+func (f *Store) WaitForApply(requestID string, timeout time.Duration, ch <-chan struct{}) error {
 	select {
 	case <-ch:
 		return nil

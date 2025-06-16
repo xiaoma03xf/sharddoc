@@ -17,7 +17,7 @@ import (
 
 const (
 	retainSnapshotCount = 2
-	defaultRaftTimeout  = 100 * time.Second
+	defaultRaftTimeout  = 10 * time.Second
 )
 
 type Store struct {
@@ -125,22 +125,35 @@ func (s *Store) Exec(exec *RaftRequest) *ExecSQLRsp {
 	if s.raft.State() != raft.Leader {
 		return &ExecSQLRsp{Err: fmt.Errorf("not Leader")}
 	}
-
 	b, err := json.Marshal(exec)
 	if err != nil {
 		return &ExecSQLRsp{Err: err}
 	}
-	// defaultRaftTimeout = 3*time.Second
+
+	// 创建 channel 等待, 仅对leader节点生效
+	// follower 节点并不关心时序竞态
+	s.mu.Lock()
+	if _, exists := s.applyWaiters[exec.RequestID]; exists {
+		return &ExecSQLRsp{Err: fmt.Errorf("duplicate request ID: %s", exec.RequestID)}
+	}
+	ch := make(chan struct{})
+	s.applyWaiters[exec.RequestID] = ch
+	s.mu.Unlock()
+
+	// defaultRaftTimeout = 10 * time.Second
 	f := s.raft.Apply(b, defaultRaftTimeout)
 	if err := f.Error(); err != nil {
 		return &ExecSQLRsp{Err: fmt.Errorf("raft apply err:%v", err)}
 	}
-
-	if err := s.WaitForApply(exec.RequestID, defaultRaftTimeout); err != nil {
+	if err := s.WaitForApply(exec.RequestID, defaultRaftTimeout, ch); err != nil {
 		return &ExecSQLRsp{Err: fmt.Errorf("raft apply err:%v", err)}
 	}
 
-	return nil
+	resp, ok := f.Response().(*ExecSQLRsp)
+	if !ok {
+		return &ExecSQLRsp{Err: fmt.Errorf("unexpected response type")}
+	}
+	return resp
 }
 
 func (s *Store) Join(join *RaftRequest) error {

@@ -26,6 +26,7 @@ func ReadResponse(conn net.Conn) (*Response, error) {
 	if _, err := io.ReadFull(conn, body); err != nil {
 		return nil, fmt.Errorf("faild to read body: %w", err)
 	}
+	fmt.Println(string(body))
 	return &Response{
 		Type: msgType,
 		Body: body,

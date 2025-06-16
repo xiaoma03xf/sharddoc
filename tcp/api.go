@@ -29,23 +29,20 @@ func (s *Service) RegisterHandlers() {
 func (s *Service) HandleExec(ctx context.Context, conn net.Conn, raftReq *RaftRequest) {
 	sql, ok := raftReq.Payload["sql"].(string)
 	if !ok {
+		logger.Info("Exec request is missing the 'sql' field or the format is correct")
 		_ = SendBadResponse(conn, []byte("Exec request is missing the 'sql' field or the format is correct"))
 		return
 	}
 	result := s.Node.Exec(raftReq)
-	if result == nil {
-		_ = SendBadResponse(conn, []byte("Exec returned nil result"))
-		return
-	}
-	if result.Err != nil {
+	if result != nil && result.Err != nil {
+		logger.Info(result.Err.Error())
 		_ = SendBadResponse(conn, []byte(result.Err.Error()))
 		return
 	}
 	// record this sql
-	logger.Info("SQL", sql)
+	logger.Info("HandleExec SQL", sql)
 
-	resp, _ := json.Marshal(result.Data)
-	_ = SendResponse(conn, TypeOKResp, resp)
+	_ = SendResponse(conn, TypeOKResp, result.Data)
 }
 func (s *Service) HandleJoin(ctx context.Context, conn net.Conn, raftReq *RaftRequest) {
 	_, ok1 := raftReq.Payload["node_id"].(string)
