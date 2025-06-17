@@ -27,7 +27,7 @@ func (s *Service) RegisterHandlers() {
 	}
 }
 func (s *Service) HandleExec(ctx context.Context, conn net.Conn, raftReq *RaftRequest) {
-	sql, ok := raftReq.Payload["sql"].(string)
+	_, ok := raftReq.Payload["sql"].(string)
 	if !ok {
 		logger.Info("Exec request is missing the 'sql' field or the format is correct")
 		_ = SendBadResponse(conn, []byte("Exec request is missing the 'sql' field or the format is correct"))
@@ -40,7 +40,7 @@ func (s *Service) HandleExec(ctx context.Context, conn net.Conn, raftReq *RaftRe
 		return
 	}
 	// record this sql
-	logger.Info("HandleExec SQL", sql)
+	// logger.Info("HandleExec SQL", sql)
 
 	_ = SendResponse(conn, TypeOKResp, result.Data)
 }

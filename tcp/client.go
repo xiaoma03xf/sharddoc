@@ -2,9 +2,13 @@ package tcp
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+
+	"github.com/google/uuid"
+	"github.com/xiaoma03xf/sharddoc/storage"
 )
 
 type Response struct {
@@ -26,9 +30,55 @@ func ReadResponse(conn net.Conn) (*Response, error) {
 	if _, err := io.ReadFull(conn, body); err != nil {
 		return nil, fmt.Errorf("faild to read body: %w", err)
 	}
-	fmt.Println(string(body))
 	return &Response{
 		Type: msgType,
 		Body: body,
 	}, nil
+}
+func buildRawRequest(sql string) ([]byte, error) {
+	return BuildTcpInfo(&RaftRequest{
+		RequestID: uuid.NewString(),
+		DataType:  TypeExec,
+		Payload: map[string]interface{}{
+			"sql": sql,
+		},
+	})
+}
+
+type Client struct {
+	Conn net.Conn
+}
+
+func Open(remoteAddr string) error {
+	// new Client
+	conn, err := net.Dial("tcp", remoteAddr)
+	if err != nil {
+		return err
+	}
+	c := Client{}
+	c.Conn = conn
+	return nil
+}
+func (c *Client) Raw(sql string) error {
+	tcpreq, err := buildRawRequest(sql)
+	if err != nil {
+		return err
+	}
+	_, err = c.Conn.Write(tcpreq)
+	if err != nil {
+		return err
+	}
+	res, err := ReadResponse(c.Conn)
+	if err != nil {
+		return err
+	}
+	if res.Type == TypeBadResp {
+		return fmt.Errorf(string(res.Body))
+	}
+	var recs []storage.Record
+	_ = json.Unmarshal(res.Body, &recs)
+	return nil
+}
+func (c *Client) Close() error {
+	return c.Conn.Close()
 }

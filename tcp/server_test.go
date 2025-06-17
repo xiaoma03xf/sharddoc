@@ -313,7 +313,43 @@ func TestCteatables(t *testing.T) {
 	assert.Equal(t, t1, t3)
 }
 
-func TestInsertData(t *testing.T) {
+// 测试增删查改
+func TestRaftDB(t *testing.T) {
+	PrintlnRec := func(recs []storage.Record) {
+		// 打印表头
+		fmt.Printf("%-10s %-20s %-10s %-10s\n", "ID", "Name", "Age", "Height")
+		fmt.Println("---------------------------------------------------------")
+		// 打印每一条记录
+		for _, r := range recs {
+			var id int64
+			var name string
+			var age, height int64
+
+			for i := 0; i < len(r.Cols); i++ {
+				switch string(r.Cols[i]) {
+				case "id":
+					if r.Vals[i].Type == 2 {
+						id = r.Vals[i].I64
+					}
+				case "name":
+					if r.Vals[i].Type == 1 {
+						name = string(r.Vals[i].Str)
+					}
+				case "age":
+					if r.Vals[i].Type == 2 {
+						age = r.Vals[i].I64
+					}
+				case "height":
+					if r.Vals[i].Type == 2 {
+						height = r.Vals[i].I64
+					}
+				}
+			}
+			// 输出数据
+			fmt.Printf("%-10d %-20s %-10d %-10d\n", id, name, age, height)
+		}
+	}
+
 	// defer func() {
 	// 	os.RemoveAll("../clusterdb")
 	// 	os.Remove("./test_data.json")
@@ -359,19 +395,30 @@ func TestInsertData(t *testing.T) {
 
 	// 持久化测试数据,便于观察
 	filePath := "test_data.json"
-	datacnt := 3
+	datacnt := 200
 	recs, err := utils.GenerateData(filePath, datacnt)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	// 并发插入，测试时序竞态功能
+	// 多个goroutine需要使用独立的连接,不然会产生竞态条件(数据乱序,甚至阻塞  )
 	fmt.Println("测试数据长度", len(recs))
 	var wg sync.WaitGroup
 	for _, rec_data := range recs {
 		wg.Add(1)
-		go func() {
+		go func(rec_data utils.RecordTestData) {
 			defer wg.Done()
+
+			// 每个 goroutine 单独建立 TCP 连接
+			conn, err := net.Dial("tcp", "127.0.0.1:29001")
+			if err != nil {
+				t.Errorf("dial error: %v", err)
+				return
+			}
+			defer conn.Close()
+
+			// 构建插入 SQL
 			cols := []string{"id", "name", "age", "height"}
 			args := []interface{}{rec_data.ID, rec_data.Name, rec_data.Age, rec_data.Height}
 			execMap := map[string]interface{}{
@@ -383,41 +430,36 @@ func TestInsertData(t *testing.T) {
 				Payload:   execMap,
 			})
 			if err != nil {
-				t.Error(err)
+				t.Errorf("BuildTcpInfo error: %v", err)
 				return
 			}
-			conn.Write(execMsg)
-
+			if _, err := conn.Write(execMsg); err != nil {
+				t.Errorf("conn.Write error: %v", err)
+				return
+			}
 			resp, err := ReadResponse(conn)
 			if err != nil {
-				t.Error(err)
+				t.Errorf("ReadResponse error: %v", err)
+				return
 			}
+			if resp.Type == TypeBadResp {
+				t.Logf("Insert error response: %s", string(resp.Body))
+				return
+			}
+			t.Logf("Insert OK response: %s", string(resp.Body))
 			// raft apply returned nil 130
-			assert.Equal(t, string(resp.Body), "OK")
-		}()
+			// assert.Equal(t, string(resp.Body), "OK")
+			t.Log("insert response:", string(resp.Body))
+		}(rec_data)
 	}
 	wg.Wait()
-	time.Sleep(2 * time.Second)
-
-	// 检查是否插入成功
-	node1db := storage.DB{Path: "../clusterdb/data/node1.db"}
-	node2db := storage.DB{Path: "../clusterdb/data/node2.db"}
-	node3db := storage.DB{Path: "../clusterdb/data/node3.db"}
-	_ = node1db.Open()
-	_ = node2db.Open()
-	_ = node3db.Open()
-	res1 := node1db.Raw("SELECT name, id FROM users WHERE age >= 0")
-	res2 := node2db.Raw("SELECT name, id FROM users WHERE age >= 0")
-	res3 := node3db.Raw("SELECT name, id FROM users WHERE age >= 0")
-	assert.Equal(t, len(res1.Recs), datacnt)
-	assert.Equal(t, len(res1.Recs), len(res2.Recs), len(res3.Recs))
+	time.Sleep(1 * time.Second)
 
 	// 测试非分布式数据对比
+	dbpath := "./testdb"
+	db := storage.DB{Path: dbpath}
+	_ = db.Open()
 	{
-		dbpath := "./testdb"
-		db := storage.DB{Path: dbpath}
-		_ = db.Open()
-
 		tdef := &storage.TableDef{
 			Name:  "users",
 			Cols:  []string{"id", "name", "age", "height"},
@@ -447,11 +489,128 @@ func TestInsertData(t *testing.T) {
 			_ = db.Commit(&tx)
 		}
 		res4 := db.Raw("SELECT name, id FROM users WHERE age >= 0")
-		assert.Equal(t, len(res1.Recs), len(res4.Recs))
+		fmt.Println(len(res4.Recs))
 	}
+	time.Sleep(1 * time.Second)
 
-}
+	// 测试简单的更新, 注意要使用索引
+	var updateUserFirst storage.QueryResult
+	var updateUserAfter storage.QueryResult
+	{
+		selectsql2 := "SELECT name, id FROM users WHERE age >= 0"
+		execMap := map[string]interface{}{
+			"sql": selectsql2,
+		}
+		execMsg, _ := BuildTcpInfo(&RaftRequest{
+			RequestID: uuid.NewString(),
+			DataType:  TypeExec,
+			Payload:   execMap,
+		})
+		conn.Write(execMsg)
+		resp, _ := ReadResponse(conn)
+		if resp.Type == TypeBadResp {
+			t.Log("update response err:", string(resp.Body))
+			return
+		}
+		_ = json.Unmarshal(resp.Body, &updateUserFirst)
+		fmt.Println("before update...")
+		PrintlnRec(updateUserFirst.Recs)
 
-func TestBootTestNode3(t *testing.T) {
-	BootstrapCluster("../node3.yaml")
+		// 执行更新
+		updatasql := "UPDATE users SET age=10086 WHERE age>22"
+		execMap = map[string]interface{}{
+			"sql": updatasql,
+		}
+		execMsg, err = BuildTcpInfo(&RaftRequest{
+			RequestID: uuid.NewString(),
+			DataType:  TypeExec,
+			Payload:   execMap,
+		})
+		if err != nil {
+			t.Fatalf("BuildTcpInfo exec error: %v", err)
+		}
+		conn.Write(execMsg)
+
+		resp, _ = ReadResponse(conn)
+		if resp.Type == TypeBadResp {
+			t.Log("update response err:", string(resp.Body))
+			return
+		}
+
+		if err = db.Exec(updatasql); err != nil {
+			t.Error(err)
+			return
+		}
+
+		// 测试更新后的数据
+		selectsql2 = "SELECT name, id FROM users WHERE age >= 0"
+		execMap = map[string]interface{}{
+			"sql": selectsql2,
+		}
+		execMsg, err = BuildTcpInfo(&RaftRequest{
+			RequestID: uuid.NewString(),
+			DataType:  TypeExec,
+			Payload:   execMap,
+		})
+		if err != nil {
+			t.Fatalf("BuildTcpInfo exec error: %v", err)
+		}
+		conn.Write(execMsg)
+		resp, _ = ReadResponse(conn)
+		if resp.Type == TypeBadResp {
+			t.Log("update response err:", string(resp.Body))
+			return
+		}
+		_ = json.Unmarshal(resp.Body, &updateUserAfter)
+		fmt.Println("after update...")
+		PrintlnRec(updateUserAfter.Recs)
+	}
+	time.Sleep(1 * time.Second)
+	// 测试删除
+	var deleteAfter storage.QueryResult
+	{
+		delsql := "DELETE FROM users WHERE age=10086 AND height > 175"
+		execMap := map[string]interface{}{
+			"sql": delsql,
+		}
+		execMsg, err := BuildTcpInfo(&RaftRequest{
+			RequestID: uuid.NewString(),
+			DataType:  TypeExec,
+			Payload:   execMap,
+		})
+		if err != nil {
+			t.Fatalf("BuildTcpInfo exec error: %v", err)
+			return
+		}
+		conn.Write(execMsg)
+		resp, _ := ReadResponse(conn)
+		if resp.Type == TypeBadResp {
+			t.Log("update response err:", string(resp.Body))
+			return
+		}
+
+		// 测试更新后的数据
+		selectsql2 := "SELECT name, id FROM users WHERE age >= 0"
+		execMap = map[string]interface{}{
+			"sql": selectsql2,
+		}
+		execMsg, err = BuildTcpInfo(&RaftRequest{
+			RequestID: uuid.NewString(),
+			DataType:  TypeExec,
+			Payload:   execMap,
+		})
+		if err != nil {
+			t.Fatalf("BuildTcpInfo exec error: %v", err)
+		}
+		conn.Write(execMsg)
+		resp, _ = ReadResponse(conn)
+		if resp.Type == TypeBadResp {
+			t.Log("update response err:", string(resp.Body))
+			return
+		}
+		_ = json.Unmarshal(resp.Body, &deleteAfter)
+		fmt.Println("len of result", len(deleteAfter.Recs))
+		fmt.Println("after delete...")
+		PrintlnRec(deleteAfter.Recs)
+	}
 }

@@ -664,11 +664,12 @@ func (db *DB) execDelete(tx *DBTX, req *DelRes) error {
 		return err
 	}
 	recs := reduceSelectData(req.Scan)
+	fmt.Println("delete length:", len(recs))
 	for _, rec := range recs {
 		_, err := tx.Delete(req.TableName, rec)
 		if err != nil {
 			return fmt.Errorf("delete rec %v, err: %v", rec, err)
-		}
+		} 
 	}
 	return nil
 }

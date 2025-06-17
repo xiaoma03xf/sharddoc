@@ -45,7 +45,6 @@ func (f *Store) applyBusinessLogic(datatype byte, payload map[string]interface{}
 	sql, _ := payload["sql"].(string)
 
 	logger.Info(fmt.Sprintf("statue:%v handle sql:%v", f.raft.State(), sql))
-
 	// 查询相关操作
 	if strings.HasPrefix(strings.ToLower(sql), "select") {
 		queryRaw := f.db.Raw(sql)
