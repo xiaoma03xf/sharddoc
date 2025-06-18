@@ -313,43 +313,43 @@ func TestCteatables(t *testing.T) {
 	assert.Equal(t, t1, t3)
 }
 
-// 测试增删查改
-func TestRaftDB(t *testing.T) {
-	PrintlnRec := func(recs []storage.Record) {
-		// 打印表头
-		fmt.Printf("%-10s %-20s %-10s %-10s\n", "ID", "Name", "Age", "Height")
-		fmt.Println("---------------------------------------------------------")
-		// 打印每一条记录
-		for _, r := range recs {
-			var id int64
-			var name string
-			var age, height int64
+func PrintlnRec(recs []storage.Record) {
+	// 打印表头
+	fmt.Printf("%-10s %-20s %-10s %-10s\n", "ID", "Name", "Age", "Height")
+	fmt.Println("---------------------------------------------------------")
+	// 打印每一条记录
+	for _, r := range recs {
+		var id int64
+		var name string
+		var age, height int64
 
-			for i := 0; i < len(r.Cols); i++ {
-				switch string(r.Cols[i]) {
-				case "id":
-					if r.Vals[i].Type == 2 {
-						id = r.Vals[i].I64
-					}
-				case "name":
-					if r.Vals[i].Type == 1 {
-						name = string(r.Vals[i].Str)
-					}
-				case "age":
-					if r.Vals[i].Type == 2 {
-						age = r.Vals[i].I64
-					}
-				case "height":
-					if r.Vals[i].Type == 2 {
-						height = r.Vals[i].I64
-					}
+		for i := 0; i < len(r.Cols); i++ {
+			switch string(r.Cols[i]) {
+			case "id":
+				if r.Vals[i].Type == 2 {
+					id = r.Vals[i].I64
+				}
+			case "name":
+				if r.Vals[i].Type == 1 {
+					name = string(r.Vals[i].Str)
+				}
+			case "age":
+				if r.Vals[i].Type == 2 {
+					age = r.Vals[i].I64
+				}
+			case "height":
+				if r.Vals[i].Type == 2 {
+					height = r.Vals[i].I64
 				}
 			}
-			// 输出数据
-			fmt.Printf("%-10d %-20s %-10d %-10d\n", id, name, age, height)
 		}
+		// 输出数据
+		fmt.Printf("%-10d %-20s %-10d %-10d\n", id, name, age, height)
 	}
+}
 
+// 测试增删查改
+func TestRaftDB(t *testing.T) {
 	// defer func() {
 	// 	os.RemoveAll("../clusterdb")
 	// 	os.Remove("./test_data.json")
