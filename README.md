@@ -150,6 +150,8 @@ titansql/
 │   └── ast/              # Abstract Syntax Tree
 ├── storage/              # Storage engine
 │   ├── bplustree.go      # B+ Tree implementation
+│   ├── bplustree_iter.go # Iter for range
+│   ├── free_list.go      # Control node page cycle
 │   ├── tx.go             # Transaction management
 │   ├── kv.go             # Key-value store
 │   ├── table.go          # Table operations
