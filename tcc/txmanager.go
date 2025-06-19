@@ -18,6 +18,28 @@ type TXManager struct {
 	registryCenter *registryCenter //TCC 组件的注册管理中心
 }
 
+func NewTXManager(txStore TXStore, opts ...Option) *TXManager {
+	ctx, cancel := context.WithCancel(context.Background())
+	txmanager := &TXManager{}
+	txmanager.opts = &Options{}
+	txmanager.txStore = txStore
+	txmanager.registryCenter = newRegistryCenter()
+	txmanager.ctx = ctx
+	txmanager.stop = cancel
+
+	for _, opt := range opts {
+		opt(txmanager.opts)
+	}
+	repair(txmanager.opts)
+
+	go txmanager.run()
+	return txmanager
+}
+
+func (t *TXManager) Stop() {
+	t.stop()
+}
+
 func (t *TXManager) Register(component TccComponent) error {
 	return t.registryCenter.register(component)
 }
@@ -44,6 +66,86 @@ func (t *TXManager) Transaction(ctx context.Context, reqs ...*RequestEntity) (st
 	return txID, t.twoPhaseCommit(ctx, txID, componentEntities), nil
 }
 
+func (t *TXManager) backOffTick(tick time.Duration) time.Duration {
+	tick <<= 1 // tick = tick * 2
+	// 就是 t.opts.MonitorTick 乘以 2^3 = 8
+	if threshold := t.opts.MonitorTick << 3; tick > threshold {
+		return threshold
+	}
+	return tick
+}
+
+func (t *TXManager) run() {
+	var tick time.Duration
+	var err error
+	for {
+		// 如果出现了失败, tick 需要避让， 遵循退避策略增大 tick 间隔时长
+		if err != nil {
+			tick = t.opts.MonitorTick
+		} else {
+			tick = t.backOffTick(tick)
+		}
+		select {
+		//倘若 txManager.ctx 被终止，则异步轮询任务退出
+		case <-t.ctx.Done():
+			return
+		//等待tick对应时长后，开始执行任务
+		case <-time.After(tick):
+			// 加锁，避免多个分布式多个节点的监控任务重复执行
+			if err := t.txStore.Lock(t.ctx, t.opts.MonitorTick); err != nil {
+				// 取消失败时（大概率被其他节点占有）, 不对tick进行退避升级
+				err = nil
+				continue
+			}
+
+			// 获取任然处于 hanging 状态的事务
+			var txs []*Transaction
+			if txs, err = t.txStore.GetHangingTXs(t.ctx); err != nil {
+				_ = t.txStore.Unlock(t.ctx)
+				continue
+			}
+			//批量推进事务进度
+			err = t.batchAdvanceProgress(txs)
+			_ = t.txStore.Unlock(t.ctx)
+		}
+	}
+}
+
+func (t *TXManager) batchAdvanceProgress(txs []*Transaction) error {
+	// 对每笔事务进行状态推进
+	errCh := make(chan error)
+	go func() {
+		// 并发执行, 推进各比事务的进度
+		var wg sync.WaitGroup
+		for _, tx := range txs {
+			// shadow
+			tx := tx
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				// 每个goroutine 负责处理一笔事务
+				if err := t.advanceProgress(tx); err != nil {
+					// 遇到错误则投递到 errch
+					errCh <- err
+				}
+			}()
+		}
+		wg.Wait()
+		close(errCh)
+	}()
+
+	var firstErr error
+	// 通过 chan 阻塞在这里, 直到所有 goroutine 执行完成, chan 被 close 才能往下
+	for err := range errCh {
+		// 记录遇到的第一个错误
+		if firstErr != nil {
+			continue
+		}
+		firstErr = err
+	}
+	return firstErr
+}
+
 // 传入一个事务id推进进度
 func (t *TXManager) advanceProgressByTXID(txID string) error {
 	// 获取事务日志记录
@@ -51,12 +153,17 @@ func (t *TXManager) advanceProgressByTXID(txID string) error {
 	if err != nil {
 		return err
 	}
+	// 推进进度
 	return t.advanceProgress(tx)
 }
 
 // 传入一个事务id推进其进度
 func (t *TXManager) advanceProgress(tx *Transaction) error {
 	// 根据各个 component try 请求的情况, 推断出事务当前的状态
+	// 1.1 倘若所有组件 try 都成功, 则为 successful
+	// 1.2 倘若所有组件 try 失败, 则为 failure
+	// 1.3 倘若事务超时了， 则为failure
+	// 1.4 否则事务为hanging
 	txStatus := tx.getStatus(time.Now().Add(-t.opts.Timeout))
 	// hanging 状态的暂时不处理
 	if txStatus == TXHanging {

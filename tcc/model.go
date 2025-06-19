@@ -5,7 +5,7 @@ import "time"
 type RequestEntity struct {
 	// 组件名称
 	ComponentID string `json:"conponentName"`
-	// 组件入参
+	// 组件入参, Try 请求时传递的参数
 	Request map[string]interface{} `json:"request"`
 }
 
@@ -40,21 +40,21 @@ func (t TXStatus) String() string {
 	return string(t)
 }
 
-type ComponentStatus string
+type ComponentTryStatus string
 
-func (c ComponentStatus) String() string {
+func (c ComponentTryStatus) String() string {
 	return string(c)
 }
 
 const (
-	TryHanging    ComponentStatus = "hanging"
-	TrySuccessful ComponentStatus = "successful"
-	TryFailure    ComponentStatus = "failure"
+	TryHanging    ComponentTryStatus = "hanging"
+	TrySuccessful ComponentTryStatus = "successful"
+	TryFailure    ComponentTryStatus = "failure"
 )
 
 type ComponentTryEntity struct {
 	ComponentID string
-	TryStatus   ComponentStatus
+	TryStatus   ComponentTryStatus
 }
 
 // 事务
