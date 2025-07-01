@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+option go_package = "../pb;pb";
+
+service KVStore {
+    // Put a key-value pair
+    rpc Put (PutRequest) returns (PutResponse);
+    
+    // Get a value by key
+    rpc Get (GetRequest) returns (GetResponse);
+    
+    // Delete a key-value pair
+    rpc Delete (DeleteRequest) returns (DeleteResponse);
+    
+    // Put multiple key-value pairs (batch operation)
+    rpc BatchPut (BatchPutRequest) returns (BatchPutResponse);
+    
+    // Scan over key-value pairs within a range
+    rpc Scan (ScanRequest) returns (ScanResponse);
+    
+    // Get the current status of the cluster
+    rpc Status (StatusRequest) returns (StatusResponse);
+    
+    // Join the Raft cluster
+    rpc Join (JoinRequest) returns (JoinResponse);
+}
+
+// PutRequest defines the request structure for Put
+message PutRequest {
+    bytes key = 1;
+    bytes value = 2;
+}
+
+// PutResponse defines the response structure for Put
+message PutResponse {
+    bool success = 1;
+    bool isUpdated = 2;
+}
+
+// GetRequest defines the request structure for Get
+message GetRequest {
+    bytes key = 1;
+}
+
+// GetResponse defines the response structure for Get
+message GetResponse {
+    bytes value = 1;
+    bool found = 2; // indicates whether the key was found
+}
+
+// DeleteRequest defines the request structure for Delete
+message DeleteRequest {
+    string key = 1;
+}
+
+// DeleteResponse defines the response structure for Delete
+message DeleteResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+// BatchPutRequest defines the request structure for BatchPut
+message BatchPutRequest {
+    repeated KeyValue pairs = 1;
+}
+
+// BatchPutResponse defines the response structure for BatchPut
+message BatchPutResponse {
+    bool success = 1;
+}
+
+// KeyValue is a single key-value pair
+message KeyValue {
+    bytes key = 1;
+    bytes value = 2;
+}
+
+// ScanRequest defines the request structure for Scan
+// const (
+// 	CMP_GE = +3 // >=
+// 	CMP_GT = +2 // >
+// 	CMP_LT = -2 // <
+// 	CMP_LE = -3 // <=
+// )
+message ScanRequest {
+    bytes start_key = 1;
+    bytes end_key = 2;
+    uint32 start_key_op = 3;
+    uint32 end_key_op = 4;
+}
+
+// ScanResponse defines the response structure for Scan
+message ScanResponse {
+    repeated KeyValue pairs = 1;
+}
+
+// StatusRequest defines the request structure for Status
+message StatusRequest {}
+
+// StatusResponse defines the response structure for Status
+message StatusResponse {
+    string leader = 1; // current leader in the cluster
+    int32 node_count = 2; // number of nodes in the cluster
+}
+
+// JoinRequest defines the request structure for Join
+message JoinRequest {
+    string node_id = 1;
+    string address = 2; // address of the new node to join the cluster
+}
+
+// JoinResponse defines the response structure for Join
+message JoinResponse {
+    bool success = 1;
+}
+// protoc --go_out=. --go-grpc_out=. kvstore.proto

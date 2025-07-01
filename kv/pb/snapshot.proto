@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+option go_package = "../pb;pb";
+
+message IncrementalSnapshot {
+  bytes key = 1;
+  bytes value = 2;
+  int32 operation = 3;
+  int64 timestamp = 4;
+}
+
+message SnapshotBatch {
+  repeated IncrementalSnapshot snapshots = 1;
+}
+
+// protoc --go_out=. --go-grpc_out=. snapshot.proto

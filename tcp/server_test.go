@@ -3,6 +3,7 @@ package tcp
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"sync"
@@ -612,5 +613,223 @@ func TestRaftDB(t *testing.T) {
 		fmt.Println("len of result", len(deleteAfter.Recs))
 		fmt.Println("after delete...")
 		PrintlnRec(deleteAfter.Recs)
+	}
+}
+func basicBootCluster() error {
+	go BootstrapCluster("../node1.yaml")
+	time.Sleep(3 * time.Second)
+	go BootstrapCluster("../node2.yaml")
+	time.Sleep(1 * time.Second)
+	go BootstrapCluster("../node3.yaml")
+	time.Sleep(1 * time.Second) 
+
+	conn, err := net.Dial("tcp", "127.0.0.1:29001")
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	statusMsg, err := BuildTcpInfo(&RaftRequest{
+		DataType: TypeStatus,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = conn.Write(statusMsg)
+	if err != nil {
+		return err
+	}
+
+	resp, err := ReadResponse(conn)
+	if err != nil {
+		return err
+	}
+
+	var status StoreStatus
+	if err := json.Unmarshal(resp.Body, &status); err != nil {
+		return err
+	}
+
+	if status.Leader.ID != "node1" {
+		return fmt.Errorf("leader is not node1")
+	}
+	if len(status.Followers) != 2 {
+		return fmt.Errorf("followers count != 2")
+	}
+
+	if !(status.Followers[0].ID == "node2" || status.Followers[1].ID == "node2") {
+		return fmt.Errorf("followers do not contain node2")
+	}
+	if !(status.Followers[0].ID == "node3" || status.Followers[1].ID == "node3") {
+		return fmt.Errorf("followers do not contain node3")
+	}
+	return nil
+}
+
+func BenchmarkRaftDB_Insert(b *testing.B) {
+	defer func() {
+		os.RemoveAll("../clusterdb")
+		os.Remove("./test_data.json")
+		os.Remove("./testdb")
+	}()
+	if err := basicBootCluster(); err != nil {
+		panic(err)
+	}
+
+	b.ReportAllocs()
+
+	// 先生成测试数据
+	filePath := "bench_data.json"
+	datacnt := 10000 // 测试量，按需调整
+	recs, err := utils.GenerateData(filePath, datacnt)
+	if err != nil {
+		b.Fatalf("generate data error: %v", err)
+	}
+
+	{
+		conn, err := net.Dial("tcp", "127.0.0.1:29001")
+		if err != nil {
+			b.Errorf("dial error: %v", err)
+			return
+		}
+
+		execMap := map[string]interface{}{
+			"sql": `
+	CREATE TABLE users (
+        id INT64,
+        name BYTES,
+        age INT64,
+		height INT64,
+		PRIMARY KEY (id),
+        INDEX (age, height)
+    );
+	`,
+		}
+		execMsg, err := BuildTcpInfo(&RaftRequest{
+			RequestID: uuid.New().String(),
+			DataType:  TypeExec,
+			Payload:   execMap,
+		})
+		if err != nil {
+			panic(err)
+		}
+		conn.Write(execMsg)
+
+		resp, err := ReadResponse(conn)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(resp.Body))
+		conn.Close()
+	}
+
+	// 多协程并发插入
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			// 每个 goroutine 单独连接
+			conn, err := net.Dial("tcp", "127.0.0.1:29001")
+			if err != nil {
+				b.Errorf("dial error: %v", err)
+				return
+			}
+
+			// 随机取一条数据插入
+			rec := recs[rand.Intn(len(recs))]
+			cols := []string{"id", "name", "age", "height"}
+			args := []interface{}{rec.ID, rec.Name, rec.Age, rec.Height}
+			execMap := map[string]interface{}{
+				"sql": storage.BuildInsertSQL("users", cols, args),
+			}
+			execMsg, err := BuildTcpInfo(&RaftRequest{
+				RequestID: uuid.New().String(),
+				DataType:  TypeExec,
+				Payload:   execMap,
+			})
+			if err != nil {
+				b.Errorf("BuildTcpInfo error: %v", err)
+				conn.Close()
+				return
+			}
+			if _, err := conn.Write(execMsg); err != nil {
+				b.Errorf("conn.Write error: %v", err)
+				conn.Close()
+				return
+			}
+			// 读取响应，忽略返回体，只要不报错即可
+			_, err = ReadResponse(conn)
+			if err != nil {
+				b.Errorf("ReadResponse error: %v", err)
+			}
+			conn.Close()
+		}
+	})
+}
+
+func BenchmarkRaftDB_Query(b *testing.B) {
+	b.ReportAllocs()
+
+	// 连接复用测试，单连接多次查询
+	conn, err := net.Dial("tcp", "127.0.0.1:29001")
+	if err != nil {
+		b.Fatalf("dial error: %v", err)
+	}
+	defer conn.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		querySQL := "SELECT name, id FROM users WHERE age >= 0 LIMIT 100"
+		execMap := map[string]interface{}{
+			"sql": querySQL,
+		}
+		execMsg, err := BuildTcpInfo(&RaftRequest{
+			RequestID: uuid.New().String(),
+			DataType:  TypeExec,
+			Payload:   execMap,
+		})
+		if err != nil {
+			b.Fatalf("BuildTcpInfo error: %v", err)
+		}
+		if _, err := conn.Write(execMsg); err != nil {
+			b.Fatalf("conn.Write error: %v", err)
+		}
+		_, err = ReadResponse(conn)
+		if err != nil {
+			b.Fatalf("ReadResponse error: %v", err)
+		}
+	}
+}
+
+func BenchmarkRaftDB_Update(b *testing.B) {
+	b.ReportAllocs()
+
+	conn, err := net.Dial("tcp", "127.0.0.1:29001")
+	if err != nil {
+		b.Fatalf("dial error: %v", err)
+	}
+	defer conn.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		updateSQL := "UPDATE users SET age=100 WHERE age > 20 LIMIT 10"
+		execMap := map[string]interface{}{
+			"sql": updateSQL,
+		}
+		execMsg, err := BuildTcpInfo(&RaftRequest{
+			RequestID: uuid.New().String(),
+			DataType:  TypeExec,
+			Payload:   execMap,
+		})
+		if err != nil {
+			b.Fatalf("BuildTcpInfo error: %v", err)
+		}
+		if _, err := conn.Write(execMsg); err != nil {
+			b.Fatalf("conn.Write error: %v", err)
+		}
+		_, err = ReadResponse(conn)
+		if err != nil {
+			b.Fatalf("ReadResponse error: %v", err)
+		}
 	}
 }
