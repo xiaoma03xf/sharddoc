@@ -1,8 +1,9 @@
 node_id: node1
 raft_addr: 127.0.0.1:28001
-http_addr: 127.0.0.1:29001
+grpc_addr: 127.0.0.1:29001
+
 raft_dir: ./clusterdb/raft/node1
-db_path: ./clusterdb/data/node1.db
+kv_path: ./clusterdb/data/node1.db
 bootstrap: true
 
 # common config

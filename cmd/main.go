@@ -8,7 +8,7 @@ import (
 
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
 	"github.com/xiaoma03xf/sharddoc/lib/utils"
-	"github.com/xiaoma03xf/sharddoc/tcp"
+	"github.com/xiaoma03xf/sharddoc/raft"
 )
 
 var cfgpath string
@@ -33,5 +33,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "No Bootstrap path")
 		os.Exit(1)
 	}
-	tcp.BootstrapCluster(cfgpath)
+	raft.BootstrapCluster(cfgpath)
 }

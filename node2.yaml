@@ -1,8 +1,9 @@
 node_id: node2
 raft_addr: 127.0.0.1:28002
-http_addr: 127.0.0.1:29002
+grpc_addr: 127.0.0.1:29002
+
 raft_dir: ./clusterdb/raft/node2
-db_path: ./clusterdb/data/node2.db
+kv_path: ./clusterdb/data/node2.db
 bootstrap: false
 join_addr: 127.0.0.1:29001
 

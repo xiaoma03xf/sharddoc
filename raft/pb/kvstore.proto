@@ -96,11 +96,15 @@ message ScanResponse {
 
 // StatusRequest defines the request structure for Status
 message StatusRequest {}
-
+message Node {
+    string id = 1;
+    string address = 2;
+}
 // StatusResponse defines the response structure for Status
 message StatusResponse {
-    string leader = 1; // current leader in the cluster
-    int32 node_count = 2; // number of nodes in the cluster
+    Node me = 1;
+    Node leader = 2;
+    repeated Node follower = 3; 
 }
 
 // JoinRequest defines the request structure for Join
