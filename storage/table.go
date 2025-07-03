@@ -411,7 +411,7 @@ func (tx *DBTX) TableNew(tdef *TableDef) error {
 		prefix = binary.LittleEndian.Uint32(meta.Get("val").Str)
 		assert(prefix > TABLE_PREFIX_MIN)
 	} else {
-		// 处理首次分配
+		// 处理首次分配, 假如之前没有创建过表, val字段是没有的
 		meta.AddStr("val", make([]byte, 4))
 	}
 	assert(len(tdef.Prefixes) == 0)
