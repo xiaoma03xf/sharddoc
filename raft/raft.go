@@ -50,6 +50,7 @@ type NodeConfig struct {
 	RaftDir  string `yaml:"raft_dir"`
 
 	KVPath    string `yaml:"kv_path"`
+	KVLogPath string `yaml:"kv_logpath"`
 	Bootstrap bool   `yaml:"bootstrap"`
 	JoinAddr  string `yaml:"join_addr,omitempty"`
 
@@ -73,7 +74,7 @@ func NewStore(cfg *NodeConfig) (*Store, error) {
 			return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
-	kv := kv.KV{Path: cfg.KVPath}
+	kv := kv.KV{Path: cfg.KVPath, Snapshot: cfg.KVLogPath}
 	if err := kv.Open(); err != nil {
 		return nil, err
 	}
@@ -191,9 +192,9 @@ func (s *Store) Open(cfg *NodeConfig) error {
 
 func BootstrapCluster(cfgPath string) {
 	nodeCfg, err := LoadNodeConfig(cfgPath)
-	assert(err == nil)
+	Assert(err == nil)
 	s, err := NewStore(nodeCfg)
-	assert(err == nil)
+	Assert(err == nil)
 	if err := s.Open(nodeCfg); err != nil {
 		panic(err)
 	}
@@ -203,7 +204,7 @@ func BootstrapCluster(cfgPath string) {
 		// 创建 发往 JoinAddr 的grpc Join请求
 		client, conn, err := BuildGrpcConn(nodeCfg.JoinAddr)
 		defer conn.Close()
-		assert(err == nil)
+		Assert(err == nil)
 		resp, err := client.Join(context.Background(), &pb.JoinRequest{
 			NodeId:  nodeCfg.NodeID,
 			Address: nodeCfg.RaftAddr,
@@ -223,7 +224,7 @@ func BootstrapCluster(cfgPath string) {
 	logger.Info("raft node exiting")
 }
 
-func assert(cond bool) {
+func Assert(cond bool) {
 	if !cond {
 		panic("assertion failure")
 	}

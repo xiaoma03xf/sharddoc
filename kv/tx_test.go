@@ -283,14 +283,22 @@ func TestSnapShot(t *testing.T) {
 	fmt.Println(len(s.Snapshots), string(s.Snapshots[len(s.Snapshots)-1].Key))
 }
 func TestGetRaftKV(t *testing.T) {
-	d := &D{}
-	d.db.Path = "test.db"
-	d.db.snapshot = "./snapshot"
-	// if err := os.MkdirAll(d.db.snapshot, 0755); err != nil {
-	// 	panic(err)
-	// }
-	// _ = d.db.Open()
-	// fmt.Println(d.get("key_19999"))
-	// d.add("j1", "j2")
-	fmt.Println(d.get("j1"))
+	d := newD()
+	defer d.dispose()
+	for i := 0; i < 1000; i++ {
+		key, val := fmt.Sprintf("key_%v", i), fmt.Sprintf("val_%v", i)
+		d.add(key, val)
+	}
+
+	tx := &KVTX{}
+	d.db.Begin(tx)
+	iter := tx.Seek([]byte("key_1"), CMP_GE, []byte("key_999"), CMP_LE)
+	err := d.db.Commit(tx)
+	assert(err == nil)
+
+	for iter.Valid() {
+		k, v := iter.Deref()
+		fmt.Printf("got k:%v, v:%v\n", string(k), string(v))
+		iter.Next()
+	}
 }

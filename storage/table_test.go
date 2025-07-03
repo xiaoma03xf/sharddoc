@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -1053,4 +1054,76 @@ func NewRaftDB(dbname string) *RaftDB {
 func (r *RaftDB) raftdbDispose() {
 	r.db.Close()
 	_ = os.Remove(fmt.Sprintf("%v.db", r.db.Path))
+}
+func TestEncodeValues(t *testing.T) {
+	// Test data with negative and positive integers
+	values := []Value{
+		{Type: TYPE_INT64, I64: -10}, // Negative integer
+		{Type: TYPE_INT64, I64: 20},  // Positive integer
+		{Type: TYPE_INT64, I64: 5},   // Positive integer
+		{Type: TYPE_INT64, I64: -30}, // Negative integer
+	}
+
+	// Encode values to bytes
+	var encoded []byte
+	encoded = encodeValues(encoded, values)
+
+	// Print encoded values for inspection
+	fmt.Printf("Encoded Bytes: %v\n", encoded)
+
+	// Decode values from the encoded byte array
+	// 关键修复：需要预先设置正确的类型！
+	decodedValues := make([]Value, len(values))
+	for i := range decodedValues {
+		decodedValues[i].Type = values[i].Type // 设置期望的类型
+	}
+	decodeValues(encoded, decodedValues)
+
+	// Print decoded values
+	fmt.Println("Decoded Values:")
+	for _, v := range decodedValues {
+		fmt.Println(v)
+	}
+
+	// Verify that decoded values match original values
+	fmt.Println("Verifying correctness:")
+	for i := range values {
+		if decodedValues[i].I64 != values[i].I64 {
+			t.Errorf("decoded value %d does not match original: expected %d, got %d",
+				i, values[i].I64, decodedValues[i].I64)
+		}
+	}
+
+	// Test order preservation: encode individual values and verify byte order
+	fmt.Println("Testing order preservation:")
+	sortedValues := make([]Value, len(values))
+	copy(sortedValues, values)
+
+	// Sort by actual numeric value
+	for i := 0; i < len(sortedValues)-1; i++ {
+		for j := i + 1; j < len(sortedValues); j++ {
+			if sortedValues[i].I64 > sortedValues[j].I64 {
+				sortedValues[i], sortedValues[j] = sortedValues[j], sortedValues[i]
+			}
+		}
+	}
+
+	// Encode each value individually for comparison
+	encodedBytes := make([][]byte, len(sortedValues))
+	for i, v := range sortedValues {
+		encodedBytes[i] = encodeValues(nil, []Value{v})
+		fmt.Printf("Value %d encoded as: %v\n", v.I64, encodedBytes[i])
+	}
+
+	// Verify that encoded bytes are in ascending order
+	for i := 0; i < len(encodedBytes)-1; i++ {
+		cmp := bytes.Compare(encodedBytes[i], encodedBytes[i+1])
+		if cmp >= 0 {
+			t.Errorf("Order preservation failed: encoded(%d) >= encoded(%d)",
+				sortedValues[i].I64, sortedValues[i+1].I64)
+		} else {
+			fmt.Printf("✓ %d < %d (byte order preserved)\n",
+				sortedValues[i].I64, sortedValues[i+1].I64)
+		}
+	}
 }

@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/xiaoma03xf/sharddoc/kv"
 	"github.com/xiaoma03xf/sharddoc/raft/pb"
 	"google.golang.org/protobuf/proto"
 )
@@ -23,7 +25,7 @@ func (s *Store) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse
 		// 向leader节点发起grpc请求, 转发Join请求
 		client, conn, err := BuildGrpcConn(getGrpcAddrFromRaftAddress(leaderAddr))
 		defer conn.Close()
-		assert(err == nil)
+		Assert(err == nil)
 		return client.Join(ctx, req)
 	}
 	// get cluster config
@@ -121,15 +123,79 @@ func (s *Store) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, e
 	}
 	return resp, nil
 }
-func (s *Store) BatchPut(context.Context, *pb.BatchPutRequest) (*pb.BatchPutResponse, error) {
-	return &pb.BatchPutResponse{}, nil
+func (s *Store) BatchPut(ctx context.Context, req *pb.BatchPutRequest) (*pb.BatchPutResponse, error) {
+	reqData, err := proto.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("faild to marshal PutRequest: %v", err)
+	}
+	op := &pb.Operation{
+		Type:  pb.OperationType_BATCHPUT,
+		Data:  reqData,
+		Term:  s.raft.CurrentTerm(),
+		Index: s.raft.LastIndex(),
+	}
+	opData, err := proto.Marshal(op)
+	if err != nil {
+		return nil, fmt.Errorf("faild to marshal OPData: %v", err)
+	}
+	f := s.raft.Apply(opData, defaultRaftTimeout)
+	if err := f.Error(); err != nil {
+		return nil, fmt.Errorf("raft apply error: %v", err)
+	}
+	resp, ok := f.Response().(*pb.BatchPutResponse)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type")
+	}
+	return resp, nil
 }
-func (s *Store) Delete(context.Context, *pb.DeleteRequest) (*pb.DeleteResponse, error) {
-	return &pb.DeleteResponse{}, nil
+func (s *Store) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+	reqData, err := proto.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("faild to marshal PutRequest: %v", err)
+	}
+	op := &pb.Operation{
+		Type:  pb.OperationType_BATCHPUT,
+		Data:  reqData,
+		Term:  s.raft.CurrentTerm(),
+		Index: s.raft.LastIndex(),
+	}
+	opData, err := proto.Marshal(op)
+	if err != nil {
+		return nil, fmt.Errorf("faild to marshal OPData: %v", err)
+	}
+	f := s.raft.Apply(opData, defaultRaftTimeout)
+	if err := f.Error(); err != nil {
+		return nil, fmt.Errorf("raft apply error: %v", err)
+	}
+	resp, ok := f.Response().(*pb.DeleteResponse)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type")
+	}
+	return resp, nil
 }
 
-func (s *Store) Get(context.Context, *pb.GetRequest) (*pb.GetResponse, error) {
-	return &pb.GetResponse{}, nil
+// Get, Scan等操作不用等apply结束
+func (s *Store) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// s.raft.CommitIndex() 集群中已经被大多数节点应用并提交的日志条目的最大索引
+	// s.raft.LastIndex() 当前leader节点的最后一条日志的索引
+	commitIndex, lastIndex := s.raft.CommitIndex(), s.raft.LastIndex()
+	for commitIndex != lastIndex {
+		select {
+		case <-time.After(50 * time.Millisecond):
+			commitIndex, lastIndex = s.raft.CommitIndex(), s.raft.LastIndex()
+		case <-ctx.Done():
+			return nil, errors.New("get operation canceled")
+		}
+	}
+	// 执行Get操作
+	tx := kv.KVTX{}
+	s.kv.Begin(&tx)
+	val, found := tx.Get(req.Key)
+	err := s.kv.Commit(&tx)
+	Assert(err == nil)
+	return &pb.GetResponse{Value: val, Found: found}, nil
 }
 
 func (s *Store) Scan(context.Context, *pb.ScanRequest) (*pb.ScanResponse, error) {

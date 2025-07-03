@@ -21,16 +21,19 @@ func nofsync(int) error {
 
 func newD() *D {
 	_ = os.Remove("test.db")
+	_ = os.Remove("wal.log")
 
 	d := &D{}
 	d.ref = map[string]string{}
 	d.db.Path = "test.db"
 	d.db.Fsync = nofsync // faster
-	d.db.snapshot = "./snapshot"
-	if err := os.MkdirAll(d.db.snapshot, 0755); err != nil {
+	d.db.Snapshot = "wal.log"
+	file, err := os.OpenFile(d.db.Snapshot, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
+	if err != nil {
 		panic(err)
 	}
-	err := d.db.Open()
+	file.Close()
+	err = d.db.Open()
 	assert(err == nil)
 	return d
 }
@@ -45,7 +48,7 @@ func (d *D) reopen() {
 func (d *D) dispose() {
 	d.db.Close()
 	os.Remove("test.db")
-	os.RemoveAll("./snapshot")
+	os.RemoveAll("wal.log")
 }
 
 func (d *D) add(key string, val string) {

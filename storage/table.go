@@ -65,7 +65,9 @@ type Value struct {
 	Str  []byte
 }
 
-// table row
+// table row 表示一条记录
+// id name age height
+// 1  jack 18  180
 type Record struct {
 	Cols []string
 	Vals []Value
@@ -76,17 +78,23 @@ func init() {
 	gob.Register(Value{})
 }
 
+// AddStr 添加一列数据 添加一行birthday
+// id name age height birthday
+// 1  jack 18  180    20020610
 func (rec *Record) AddStr(col string, val []byte) *Record {
 	rec.Cols = append(rec.Cols, col)
 	rec.Vals = append(rec.Vals, Value{Type: TYPE_BYTES, Str: val})
 	return rec
 }
+
+// 添加数字
 func (rec *Record) AddInt64(col string, val int64) *Record {
 	rec.Cols = append(rec.Cols, col)
 	rec.Vals = append(rec.Vals, Value{Type: TYPE_INT64, I64: val})
 	return rec
 }
 
+// 获取Record中某一行的值
 func (rec *Record) Get(key string) *Value {
 	for i, c := range rec.Cols {
 		if c == key {
@@ -97,6 +105,7 @@ func (rec *Record) Get(key string) *Value {
 }
 
 // extract multiple column values
+// 取出多行的值, 如果数据表定义的字段类型不是要求的 bad column type错误
 func getValues(tdef *TableDef, rec Record, cols []string) ([]Value, error) {
 	vals := make([]Value, len(cols))
 	for i, c := range cols {
@@ -113,6 +122,8 @@ func getValues(tdef *TableDef, rec Record, cols []string) ([]Value, error) {
 }
 
 // escape the null byte so that the string contains no null byte.
+// 转义函数 0x00 → 0x01 0x01, 0x01 → 0x01 0x02
+// in = []byte{0x00, 0x01, 0x02, 0x03} 转义后 []byte{0x01, 0x01, 0x01, 0x02, 0x02, 0x03}
 func escapeString(in []byte) []byte {
 	toEscape := bytes.Count(in, []byte{0}) + bytes.Count(in, []byte{1})
 	if toEscape == 0 {
@@ -137,6 +148,7 @@ func escapeString(in []byte) []byte {
 	return out
 }
 
+// 转义恢复
 func unescapeString(in []byte) []byte {
 	if bytes.Count(in, []byte{1}) == 0 {
 		return in // fast path: no unescape
@@ -158,16 +170,22 @@ func unescapeString(in []byte) []byte {
 }
 
 // order-preserving encoding
+// 对数字和字符串编码, 数字编码是为了保证他的顺序
+// 负数用补码表示, []byte形式就无法比较大小了
+// 对字符串编码是为了保证分隔符的冲突
 func encodeValues(out []byte, vals []Value) []byte {
 	for _, v := range vals {
 		out = append(out, byte(v.Type)) // 1. 类型标记
 		switch v.Type {
-		case TYPE_INT64: // 处理整数
+		case TYPE_INT64:
+			//__数字位翻转__：解决负数在二进制补码表示下的排序问题
+			// 让字节比较等价于数值比较
 			var buf [8]byte
 			u := uint64(v.I64) + (1 << 63)        // 符号位翻转
 			binary.BigEndian.PutUint64(buf[:], u) // 大端序存储
 			out = append(out, buf[:]...)
-		case TYPE_BYTES: // 处理字符串
+		case TYPE_BYTES:
+			// __字符串转义__：解决分隔符冲突问题，让字节比较等价于字符串比较
 			out = append(out, escapeString(v.Str)...) // 转义处理
 			out = append(out, 0)                      // 添加终止符
 		default:
@@ -339,13 +357,6 @@ func tableDefCheck(tdef *TableDef) error {
 		}
 		tdef.Indexes[i] = index
 	}
-
-	// for _, col := range tdef.Cols {
-	// 	if strings.ToLower(col) == "id" {
-	// 		return nil
-	// 	}
-	// }
-	// return fmt.Errorf("the id field is required")
 	return nil
 }
 
@@ -382,7 +393,7 @@ func (tx *DBTX) TableNew(tdef *TableDef) error {
 	if err := tableDefCheck(tdef); err != nil {
 		return err
 	}
-	// 1. check the existing table
+	// 1. check the existing table，检查表是否已存在
 	table := (&Record{}).AddStr("name", []byte(tdef.Name))
 	ok, err := dbGet(tx, TDEF_TABLE, table)
 	assert(err == nil)
@@ -391,7 +402,7 @@ func (tx *DBTX) TableNew(tdef *TableDef) error {
 	}
 	// 2. allocate new prefixes, 分配前缀
 	//TDEF_META 是数据库内部的`元数据表`，用来保存系统内部的配置、状态等，比如前缀分配器
-	// 去TDEF_META表中查询"key","next_prefix"字段
+	// 去TDEF_META表中查询"key","next_prefix"字段, 如果没有ok == false 表示第一次查询
 	prefix := uint32(TABLE_PREFIX_MIN)
 	meta := (&Record{}).AddStr("key", []byte("next_prefix"))
 	ok, err = dbGet(tx, TDEF_META, meta)
@@ -405,11 +416,13 @@ func (tx *DBTX) TableNew(tdef *TableDef) error {
 	}
 	assert(len(tdef.Prefixes) == 0)
 	for i := range tdef.Indexes {
-		// 为索引分配前缀
+		// 为索引分配前缀，假设users表有3个索引：["id"], ["name"], ["age"]
 		tdef.Prefixes = append(tdef.Prefixes, prefix+uint32(i))
 	}
+
 	// 3. update the next prefix
 	// FIXME: integer overflow.跟新下一个前缀并写入
+	// 用了多少个前缀Prefixes, 加上去就可以了
 	next := prefix + uint32(len(tdef.Indexes))
 	binary.LittleEndian.PutUint32(meta.Get("val").Str, next)
 	_, err = dbUpdate(tx, TDEF_META, &DBUpdateReq{Record: *meta})
@@ -441,6 +454,7 @@ type DBUpdateReq struct {
 func dbUpdate(tx *DBTX, tdef *TableDef, dbreq *DBUpdateReq) (bool, error) {
 	// reorder the columns so that they start with the primary key
 	// cols 把主键和非主键拼接起来, 然后取出当前数据, values 通过 依次遍历cols中的键位获得值
+	// 用户可能输入的是位置多样的key, 要把所有的key调整为表的样子，再依次取出所有的值
 	cols := slices.Concat(tdef.Indexes[0], nonPrimaryKeyCols(tdef))
 	values, err := getValues(tdef, dbreq.Record, cols)
 	if err != nil {
@@ -449,9 +463,13 @@ func dbUpdate(tx *DBTX, tdef *TableDef, dbreq *DBUpdateReq) (bool, error) {
 
 	// insert the row
 	// npk 表示主键长度, 先获取主键的长度(主键可能是多个key也可能是单key), 然后把主键和prefix编码
+	// 假如默认id为第一个主键, 	npk := len(tdef.Indexes[0]) == 1
 	npk := len(tdef.Indexes[0]) // number of primary key columns
+	// key 用每张表的Prefixes作前缀, 第一个主键作key
+	// 其余的Value作为val编码
 	key := encodeKey(nil, tdef.Prefixes[0], values[:npk])
 	val := encodeValues(nil, values[npk:])
+
 	req := UpdateReq{Key: key, Val: val, Mode: dbreq.Mode}
 	if _, err := tx.kv.Update(&req); err != nil {
 		return false, err // length limit

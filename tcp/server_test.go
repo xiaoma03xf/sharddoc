@@ -351,12 +351,12 @@ func PrintlnRec(recs []storage.Record) {
 
 // 测试增删查改
 func TestRaftDB(t *testing.T) {
-	// defer func() {
-	// 	os.RemoveAll("../clusterdb")
-	// 	os.Remove("./test_data.json")
-	// 	os.Remove("./testdb")
-	// }()
-	// bootCluster(t)
+	defer func() {
+		os.RemoveAll("../clusterdb")
+		os.Remove("./test_data.json")
+		os.Remove("./testdb")
+	}()
+	bootCluster(t)
 	// 默认node1 为leader节点
 	conn, err := net.Dial("tcp", "127.0.0.1:29001")
 	if err != nil {
@@ -621,7 +621,7 @@ func basicBootCluster() error {
 	go BootstrapCluster("../node2.yaml")
 	time.Sleep(1 * time.Second)
 	go BootstrapCluster("../node3.yaml")
-	time.Sleep(1 * time.Second) 
+	time.Sleep(1 * time.Second)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:29001")
 	if err != nil {

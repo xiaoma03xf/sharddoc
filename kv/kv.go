@@ -40,7 +40,7 @@ type KV struct {
 	history []CommittedTX // chanages keys; for detecting conflicts
 
 	// 存储快照文件
-	snapshot string
+	Snapshot string
 }
 type CommittedTX struct {
 	version uint64

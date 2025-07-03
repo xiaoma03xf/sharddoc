@@ -1,11 +1,15 @@
 node_id: node3
 raft_addr: 127.0.0.1:28003
+join_addr: 127.0.0.1:29002
+raft_dir: ./clusterdb/raft/node3
+bootstrap: false
+
 grpc_addr: 127.0.0.1:29003
 
-raft_dir: ./clusterdb/raft/node3
-kv_path: ./clusterdb/data/node3.db
-bootstrap: false
-join_addr: 127.0.0.1:29002
+
+kv_path: ./clusterdb/data/node3/node3.db
+kv_logpath: ../clusterdb/data/node3/wal.log
+
 
 # common config
 raft_timeout: 10s
