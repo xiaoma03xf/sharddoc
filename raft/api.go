@@ -23,7 +23,7 @@ func (s *Store) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse
 			return nil, errors.New("no leader found")
 		}
 		// 向leader节点发起grpc请求, 转发Join请求
-		client, conn, err := BuildGrpcConn(getGrpcAddrFromRaftAddress(leaderAddr))
+		client, conn, err := BuildGrpcConn(s.getGrpcAddrFromRaftAddress(leaderAddr))
 		defer conn.Close()
 		Assert(err == nil)
 		return client.Join(ctx, req)
@@ -56,9 +56,9 @@ func (s *Store) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse
 	return &pb.JoinResponse{Success: true}, nil
 }
 
-func getGrpcAddrFromRaftAddress(raftaddress string) string {
+func (s *Store) getGrpcAddrFromRaftAddress(raftaddress string) string {
 	//TODO 假设我们有一个配置映射，提供 Raft 地址与 gRPC 地址的映射
-	grpcAddressMap := map[string]string{
+	var grpcAddressMap = map[string]string{
 		"127.0.0.1:28001": "127.0.0.1:29001",
 		"127.0.0.1:28002": "127.0.0.1:29002",
 		"127.0.0.1:28003": "127.0.0.1:29003",
@@ -70,32 +70,33 @@ func getGrpcAddrFromRaftAddress(raftaddress string) string {
 // 返回的是raft内部信息，而不是暴露在外的 grpc 信息
 func (s *Store) Status(ctx context.Context, req *pb.StatusRequest) (*pb.StatusResponse, error) {
 	leaderServerAddr, leaderID := s.raft.LeaderWithID()
-	leader := &pb.Node{Id: string(leaderID), Address: string(leaderServerAddr)}
+	leader := &pb.Node{
+		Id:          string(leaderID),
+		Address:     string(leaderServerAddr),
+		Grpcaddress: s.getGrpcAddrFromRaftAddress(string(leaderServerAddr)),
+	}
+
 	servers := s.raft.GetConfiguration().Configuration().Servers
 	followers := []*pb.Node{}
 	me := &pb.Node{
-		Address: s.raftAddr,
+		Id:          s.nodeID,
+		Address:     s.raftAddr,
+		Grpcaddress: s.grpcaddr,
 	}
 	for _, server := range servers {
 		if server.ID != leaderID {
 			followers = append(followers, &pb.Node{
-				Id:      string(server.ID),
-				Address: string(server.Address),
+				Id:          string(server.ID),
+				Address:     string(server.Address),
+				Grpcaddress: s.getGrpcAddrFromRaftAddress(string(server.Address)),
 			})
 		}
-		if string(server.Address) == s.raftAddr {
-			me = &pb.Node{
-				Id:      string(server.ID),
-				Address: string(server.Address),
-			}
-		}
 	}
-	status := &pb.StatusResponse{
+	return &pb.StatusResponse{
 		Me:       me,
 		Leader:   leader,
 		Follower: followers,
-	}
-	return status, nil
+	}, nil
 }
 
 func (s *Store) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {

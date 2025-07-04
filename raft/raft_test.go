@@ -153,6 +153,20 @@ func TestBootStrap(t *testing.T) {
 }
 
 func TestBatchInsert(t *testing.T) {
+	defer func() {
+		os.RemoveAll("../clusterdb")
+	}()
+	conf1 := "../node1.yaml"
+	conf2 := "../node2.yaml"
+	conf3 := "../node3.yaml"
+
+	go BootstrapCluster(conf1)
+	time.Sleep(2 * time.Second)
+	go BootstrapCluster(conf2)
+	time.Sleep(2 * time.Second)
+	go BootstrapCluster(conf3)
+	time.Sleep(2 * time.Second)
+
 	// Generate key-value pairs
 	kvPairs := make([]*pb.KeyValue, 1000)
 	for i := 0; i < 1000; i++ {
@@ -181,5 +195,20 @@ func TestBatchInsert(t *testing.T) {
 			t.Errorf("value not expected, want: %v, got: %v", string(pair.Value), string(resp.Value))
 		}
 		fmt.Printf("value want: %v, got: %v\n", string(pair.Value), string(resp.Value))
+	}
+}
+
+func TestBaisic(t *testing.T) {
+	type Name struct {
+		age  int
+		name string
+	}
+	mp := make(map[string]*Name)
+	mp["jun"] = &Name{age: 18, name: "邓骏"}
+	var a *Name
+	a = mp["jun"]
+	a.age = 180
+	for k, v := range mp {
+		fmt.Println(k, v)
 	}
 }

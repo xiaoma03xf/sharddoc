@@ -99,6 +99,7 @@ message StatusRequest {}
 message Node {
     string id = 1;
     string address = 2;
+    string grpcaddress = 3;
 }
 // StatusResponse defines the response structure for Status
 message StatusResponse {

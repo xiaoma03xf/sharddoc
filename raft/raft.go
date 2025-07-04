@@ -39,8 +39,10 @@ type Store struct {
 	raftDir  string
 	raftAddr string
 	raft     *raft.Raft
-	logger   *log.Logger
+	grpcaddr string
+	nodeID   string
 
+	logger *log.Logger
 	// undo map
 	applyWaiters map[string]chan struct{}
 }
@@ -83,6 +85,8 @@ func NewStore(cfg *NodeConfig) (*Store, error) {
 	s.kv = &kv
 	s.raftDir = cfg.RaftDir
 	s.raftAddr = cfg.RaftAddr
+	s.grpcaddr = cfg.GrpcAddr
+	s.nodeID = cfg.NodeID
 	s.logger = log.New(os.Stderr, "[store] ", log.LstdFlags)
 	s.applyWaiters = make(map[string]chan struct{})
 

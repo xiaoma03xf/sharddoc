@@ -292,11 +292,11 @@ func TestGetRaftKV(t *testing.T) {
 
 	tx := &KVTX{}
 	d.db.Begin(tx)
-	iter := tx.Seek([]byte("key_1"), CMP_GE, []byte("key_999"), CMP_LE)
+	iter := tx.Seek([]byte("key_5"), CMP_GE, []byte("key_100"), CMP_LE)
 	err := d.db.Commit(tx)
 	assert(err == nil)
 
-	for iter.Valid() {
+	for !iter.Valid() {
 		k, v := iter.Deref()
 		fmt.Printf("got k:%v, v:%v\n", string(k), string(v))
 		iter.Next()

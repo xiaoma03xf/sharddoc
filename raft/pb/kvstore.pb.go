@@ -7,11 +7,12 @@
 package pb
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -629,6 +630,7 @@ type Node struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Address       string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	Grpcaddress   string                 `protobuf:"bytes,3,opt,name=grpcaddress,proto3" json:"grpcaddress,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -673,6 +675,13 @@ func (x *Node) GetId() string {
 func (x *Node) GetAddress() string {
 	if x != nil {
 		return x.Address
+	}
+	return ""
+}
+
+func (x *Node) GetGrpcaddress() string {
+	if x != nil {
+		return x.Grpcaddress
 	}
 	return ""
 }
@@ -875,10 +884,11 @@ const file_kvstore_proto_rawDesc = "" +
 	"end_key_op\x18\x04 \x01(\rR\bendKeyOp\"/\n" +
 	"\fScanResponse\x12\x1f\n" +
 	"\x05pairs\x18\x01 \x03(\v2\t.KeyValueR\x05pairs\"\x0f\n" +
-	"\rStatusRequest\"0\n" +
+	"\rStatusRequest\"R\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
-	"\aaddress\x18\x02 \x01(\tR\aaddress\"i\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\x12 \n" +
+	"\vgrpcaddress\x18\x03 \x01(\tR\vgrpcaddress\"i\n" +
 	"\x0eStatusResponse\x12\x15\n" +
 	"\x02me\x18\x01 \x01(\v2\x05.NodeR\x02me\x12\x1d\n" +
 	"\x06leader\x18\x02 \x01(\v2\x05.NodeR\x06leader\x12!\n" +
