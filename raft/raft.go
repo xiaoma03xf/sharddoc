@@ -9,12 +9,15 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/xiaoma03xf/sharddoc/kv"
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
+	"github.com/xiaoma03xf/sharddoc/raft/etcd"
 	"github.com/xiaoma03xf/sharddoc/raft/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -36,11 +39,13 @@ type Store struct {
 	mu sync.Mutex
 	kv *kv.KV
 
-	raftDir  string
-	raftAddr string
-	raft     *raft.Raft
-	grpcaddr string
-	nodeID   string
+	raftDir      string
+	raftAddr     string
+	raft         *raft.Raft
+	grpcaddr     string
+	nodeID       string
+	registry     *etcd.ServiceRegistry
+	isRegistered int32 // atomic
 
 	logger *log.Logger
 	// undo map
@@ -56,8 +61,11 @@ type NodeConfig struct {
 	Bootstrap bool   `yaml:"bootstrap"`
 	JoinAddr  string `yaml:"join_addr,omitempty"`
 
-	// grpc 暴露地址
-	GrpcAddr string `yaml:"grpc_addr"`
+	// grpc 暴露地址, ClusterID 所属集群ID， etcdAddr
+	GrpcAddr  string   `yaml:"grpc_addr"`
+	ClusterID string   `yaml:"cluster_id"`
+	EtcdID    []string `yaml:"etcd_id"`
+	Ttl       int64    `yaml:"ttl"`
 	// common config
 	RaftTimeout       time.Duration `yaml:"raft_timeout"`
 	SnapshotInterval  time.Duration `yaml:"snapshot_interval"`
@@ -90,9 +98,16 @@ func NewStore(cfg *NodeConfig) (*Store, error) {
 	s.logger = log.New(os.Stderr, "[store] ", log.LstdFlags)
 	s.applyWaiters = make(map[string]chan struct{})
 
+	// 开启grpc服务，并定期检测注册或退出etcd
 	grpcsignal := make(chan struct{})
 	go s.grpcListenAndServe(cfg.GrpcAddr, grpcsignal)
 	<-grpcsignal
+
+	registry, err := etcd.NewServiceRegistry(cfg.EtcdID, cfg.ClusterID, cfg.GrpcAddr, cfg.Ttl)
+	if err != nil {
+		return nil, err
+	}
+	s.registry = registry
 
 	return s, nil
 }
@@ -139,6 +154,36 @@ func (s *Store) grpcListenAndServe(grpcServeaddr string, grpcsignal chan<- struc
 		panic(err)
 	}
 }
+func (s *Store) IsLeader() bool {
+	return s.raft.State() == raft.Leader
+}
+
+// startLeaderWatcher 监听状态，同步etcd
+func (s *Store) startLeaderWatcher() {
+	ch := make(chan raft.Observation, 1)
+	observer := raft.NewObserver(ch, false, nil)
+	s.raft.RegisterObserver(observer)
+
+	go func() {
+		for obs := range ch {
+			if leaderObs, ok := obs.Data.(raft.LeaderObservation); ok {
+				if string(leaderObs.LeaderAddr) == s.raftAddr {
+					if atomic.LoadInt32(&s.isRegistered) == 0 {
+						err := s.registry.Register(s.IsLeader, func() {
+							atomic.StoreInt32(&s.isRegistered, 0)
+						})
+						if err == nil {
+							logger.Info(s.raftAddr, "注册到etcd成功")
+							atomic.StoreInt32(&s.isRegistered, 1)
+						} else {
+							log.Printf("etcd 注册失败: %v", err)
+						}
+					}
+				}
+			}
+		}
+	}()
+}
 
 func (s *Store) Open(cfg *NodeConfig) error {
 	// 创建 Raft 配置
@@ -146,6 +191,10 @@ func (s *Store) Open(cfg *NodeConfig) error {
 	config.LocalID = raft.ServerID(cfg.NodeID)
 	config.SnapshotInterval = cfg.SnapshotInterval   // 至少间隔 3 分钟检查一次是否需要快照
 	config.SnapshotThreshold = cfg.SnapshotThreshold // 日志条目超过 100000 才创建快照
+	config.Logger = hclog.New(&hclog.LoggerOptions{
+		Name:  "raft",
+		Level: hclog.Off, // 完全关闭日志
+	})
 
 	// 设置网络传输, raftAddr 转成TCP地址结构
 	// 使用 raft.NewTCPTransport 创建一个 TCP 传输通道，让 Raft 节点可以收发消息
@@ -191,14 +240,20 @@ func (s *Store) Open(cfg *NodeConfig) error {
 		}
 		rf.BootstrapCluster(configuration)
 	}
+
+	go s.startLeaderWatcher()
 	return nil
 }
 
 func BootstrapCluster(cfgPath string) {
 	nodeCfg, err := LoadNodeConfig(cfgPath)
-	Assert(err == nil)
+	if err != nil {
+		panic(err)
+	}
 	s, err := NewStore(nodeCfg)
-	Assert(err == nil)
+	if err != nil {
+		panic(err)
+	}
 	if err := s.Open(nodeCfg); err != nil {
 		panic(err)
 	}
@@ -208,14 +263,14 @@ func BootstrapCluster(cfgPath string) {
 		// 创建 发往 JoinAddr 的grpc Join请求
 		client, conn, err := BuildGrpcConn(nodeCfg.JoinAddr)
 		defer conn.Close()
-		Assert(err == nil)
+		if err != nil {
+			panic(err)
+		}
 		resp, err := client.Join(context.Background(), &pb.JoinRequest{
 			NodeId:  nodeCfg.NodeID,
 			Address: nodeCfg.RaftAddr,
 		})
-		if err != nil {
-			fmt.Println(resp)
-			fmt.Println(nodeCfg.JoinAddr)
+		if err != nil || !resp.Success {
 			logger.Warn("failed to connect, err:", err)
 			panic(err)
 		}

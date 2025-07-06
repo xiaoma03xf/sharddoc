@@ -3,6 +3,7 @@ package raft
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/xiaoma03xf/sharddoc/kv"
 	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"github.com/xiaoma03xf/sharddoc/server/etcd"
 )
 
 func TestStoreInterface(t *testing.T) {
@@ -198,17 +200,46 @@ func TestBatchInsert(t *testing.T) {
 	}
 }
 
-func TestBaisic(t *testing.T) {
-	type Name struct {
-		age  int
-		name string
+func TestEtcdConf(t *testing.T) {
+	// defer func() {
+	// 	os.RemoveAll("../clusterdb")
+	// }()
+	// conf1 := "../node1.yaml"
+	// conf2 := "../node2.yaml"
+	// conf3 := "../node3.yaml"
+
+	// go BootstrapCluster(conf1)
+	// time.Sleep(2 * time.Second)
+	// go BootstrapCluster(conf2)
+	// time.Sleep(2 * time.Second)
+	// go BootstrapCluster(conf3)
+	// time.Sleep(2 * time.Second)
+
+	// 启动后检测当前集群状态
+	leaderAddr := "127.0.0.1:29003"
+	localClient, localConn, err := BuildGrpcConn(leaderAddr)
+	Assert(err == nil)
+	defer localConn.Close()
+	resp, err := localClient.Status(context.Background(), &pb.StatusRequest{})
+	if err != nil {
+		t.Error(err)
 	}
-	mp := make(map[string]*Name)
-	mp["jun"] = &Name{age: 18, name: "邓骏"}
-	var a *Name
-	a = mp["jun"]
-	a.age = 180
-	for k, v := range mp {
-		fmt.Println(k, v)
+	fmt.Println("Leader:", resp.Leader)
+	fmt.Println("Me:", resp.Me)
+	fmt.Println("Follower:", resp.Follower)
+
+	endpoints := []string{"118.89.66.104:2379"}
+	clusterID := "cluster1"
+
+	// 检测此时etcd服务
+	sd, err := etcd.NewServiceDiscovery(endpoints, clusterID)
+	if err != nil {
+		log.Fatalf("创建服务发现失败: %v", err)
+	}
+	defer sd.Close()
+	sd.Start()
+	servicesMp := sd.GetServices()
+	for _, v := range servicesMp {
+		fmt.Println("etcd server:", v.Addr) // ?
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
-	"github.com/xiaoma03xf/sharddoc/raft"
 	"github.com/xiaoma03xf/sharddoc/raft/pb"
 	"google.golang.org/grpc"
 )
@@ -18,10 +17,6 @@ const (
 
 type DB struct {
 	mu sync.RWMutex
-	// cluster1 ->[node1, node2, node2]
-	// cluster2 ->[node1, node2, node2]
-	clusterAddrs map[string][]ClusterNode
-
 	// 缓存每一个cluster中leader信息, kvclients 表示和leader的grpc client
 	// conn 连接, leaderCache 为缓存的leader信息
 	leaders      map[string]*LeaderManager
@@ -30,39 +25,33 @@ type DB struct {
 	metaClusterID string // 元数据, 系统信息放在哪个集群
 	stopCh        chan struct{}
 }
-type ClusterNode struct {
-	ID       string
-	RaftAddr string
-	GrpcAddr string
-}
+
 type LeaderManager struct {
 	mu          sync.RWMutex
 	ID          string
 	GrpcAddress string
 	Client      pb.KVStoreClient
 	Conn        *grpc.ClientConn
-	ChangeChan  chan struct{}
 	LastActive  time.Time
 }
 
-func NewDB(metaNodeID string, clusterAddrs map[string][]ClusterNode) (*DB, error) {
+func NewDB(metaNodeID string, clusterAddrs []string) (*DB, error) {
 	if metaNodeID == "" {
 		return nil, fmt.Errorf("metaNodeID is nil")
 	}
 	if len(clusterAddrs) == 0 {
 		return nil, fmt.Errorf("clusterAddrs is nil")
 	}
-	if _, ok := clusterAddrs[metaNodeID]; !ok {
-		return nil, fmt.Errorf("metaClusterID %s is not contained in clusterAddrs", metaNodeID)
+	leaders := make(map[string]*LeaderManager)
+	for _, addr := range clusterAddrs {
+		leaders[addr] = &LeaderManager{}
 	}
-	db := &DB{
-		clusterAddrs:  make(map[string][]ClusterNode),
-		leaders:       make(map[string]*LeaderManager),
+	return &DB{
+		leaders:       leaders,
 		cacheTimeout:  CachedTimeOut,
 		metaClusterID: metaNodeID,
 		stopCh:        make(chan struct{}, 1),
-	}
-	return db, nil
+	}, nil
 }
 
 func (db *DB) Close() {
@@ -74,21 +63,11 @@ func (db *DB) Close() {
 		if leader.Conn != nil {
 			leader.Conn.Close()
 		}
-		close(leader.ChangeChan) // 统一关闭 ChangeChan
 		leader.mu.Unlock()
 		delete(db.leaders, clusterID)
 	}
 }
-func (db *DB) watchClusterChanges(clusterID string) {
-	for {
-		select {
-		case <-db.stopCh:
-			return
-		case <-db.leaders[clusterID].ChangeChan:
-			// 集群成员变更，重新查询 leader
-		}
-	}
-}
+
 func (db *DB) getLeader(clusterID string) (pb.KVStoreClient, *grpc.ClientConn, error) {
 	client, conn, err := db.getLeaderFromCache(clusterID)
 	if err == nil {
@@ -180,7 +159,6 @@ func (db *DB) getLeaderFromCache(clusterID string) (pb.KVStoreClient, *grpc.Clie
 		cachedleader.Conn = nil
 		cachedleader.ID = ""
 		cachedleader.GrpcAddress = ""
-		close(cachedleader.ChangeChan)
 	}
 	cachedleader.mu.Unlock()
 	return nil, nil, fmt.Errorf("cached leader invalid for cluster %s", clusterID)

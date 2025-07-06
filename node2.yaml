@@ -5,6 +5,10 @@ join_addr: 127.0.0.1:29001
 bootstrap: false
 
 grpc_addr: 127.0.0.1:29002
+cluster_id: cluster1
+etcd_id:
+  - 118.89.66.104:2379
+ttl: 5
 
 kv_path: ./clusterdb/data/node2/node2.db
 kv_logpath: ../clusterdb/data/node2/wal.log
