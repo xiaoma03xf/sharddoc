@@ -51,59 +51,39 @@ type Store struct {
 	// undo map
 	applyWaiters map[string]chan struct{}
 }
-type NodeConfig struct {
-	NodeID   string `yaml:"node_id"`
-	RaftAddr string `yaml:"raft_addr"`
-	RaftDir  string `yaml:"raft_dir"`
 
-	KVPath    string `yaml:"kv_path"`
-	KVLogPath string `yaml:"kv_logpath"`
-	Bootstrap bool   `yaml:"bootstrap"`
-	JoinAddr  string `yaml:"join_addr,omitempty"`
-
-	// grpc 暴露地址, ClusterID 所属集群ID， etcdAddr
-	GrpcAddr  string   `yaml:"grpc_addr"`
-	ClusterID string   `yaml:"cluster_id"`
-	EtcdID    []string `yaml:"etcd_id"`
-	Ttl       int64    `yaml:"ttl"`
-	// common config
-	RaftTimeout       time.Duration `yaml:"raft_timeout"`
-	SnapshotInterval  time.Duration `yaml:"snapshot_interval"`
-	SnapshotThreshold uint64        `yaml:"snapshot_threshold"`
-}
-
-func NewStore(cfg *NodeConfig) (*Store, error) {
+func NewStore(c *CommonConfig, n *NodeConfig) (*Store, error) {
 	// 如果raft目录不存在就新建一个
 	// 如果 db 文件夹不存在也新建一个
-	if err := os.MkdirAll(cfg.RaftDir, 0755); err != nil {
+	if err := os.MkdirAll(n.RaftDir, 0755); err != nil {
 		return nil, fmt.Errorf("create raft_dir failed: %w", err)
 	}
-	dir := filepath.Dir(cfg.KVPath)
+	dir := filepath.Dir(n.KVPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
-	kv := kv.KV{Path: cfg.KVPath, Snapshot: cfg.KVLogPath}
+	kv := kv.KV{Path: n.KVPath, Snapshot: n.KVLogPath}
 	if err := kv.Open(); err != nil {
 		return nil, err
 	}
 
 	s := &Store{}
 	s.kv = &kv
-	s.raftDir = cfg.RaftDir
-	s.raftAddr = cfg.RaftAddr
-	s.grpcaddr = cfg.GrpcAddr
-	s.nodeID = cfg.NodeID
+	s.raftDir = n.RaftDir
+	s.raftAddr = n.RaftAddr
+	s.grpcaddr = n.GrpcAddr
+	s.nodeID = n.NodeID
 	s.logger = log.New(os.Stderr, "[store] ", log.LstdFlags)
 	s.applyWaiters = make(map[string]chan struct{})
 
 	// 开启grpc服务，并定期检测注册或退出etcd
 	grpcsignal := make(chan struct{})
-	go s.grpcListenAndServe(cfg.GrpcAddr, grpcsignal)
+	go s.grpcListenAndServe(n.GrpcAddr, grpcsignal)
 	<-grpcsignal
 
-	registry, err := etcd.NewServiceRegistry(cfg.EtcdID, cfg.ClusterID, cfg.GrpcAddr, cfg.Ttl)
+	registry, err := etcd.NewServiceRegistry(c.Etcd.Endpoints, n.ClusterID, n.GrpcAddr, c.Etcd.TTL)
 	if err != nil {
 		return nil, err
 	}
@@ -185,12 +165,12 @@ func (s *Store) startLeaderWatcher() {
 	}()
 }
 
-func (s *Store) Open(cfg *NodeConfig) error {
+func (s *Store) Open(c *CommonConfig, n *NodeConfig) error {
 	// 创建 Raft 配置
 	config := raft.DefaultConfig()
-	config.LocalID = raft.ServerID(cfg.NodeID)
-	config.SnapshotInterval = cfg.SnapshotInterval   // 至少间隔 3 分钟检查一次是否需要快照
-	config.SnapshotThreshold = cfg.SnapshotThreshold // 日志条目超过 100000 才创建快照
+	config.LocalID = raft.ServerID(n.NodeID)
+	config.SnapshotInterval = c.SnapshotInterval   // 至少间隔 3 分钟检查一次是否需要快照
+	config.SnapshotThreshold = c.SnapshotThreshold // 日志条目超过 100000 才创建快照
 	config.Logger = hclog.New(&hclog.LoggerOptions{
 		Name:  "raft",
 		Level: hclog.Off, // 完全关闭日志
@@ -229,7 +209,7 @@ func (s *Store) Open(cfg *NodeConfig) error {
 	s.raft = rf
 
 	// 首节点直接启动集群
-	if cfg.Bootstrap {
+	if n.Bootstrap {
 		configuration := raft.Configuration{
 			Servers: []raft.Server{
 				{
@@ -245,16 +225,27 @@ func (s *Store) Open(cfg *NodeConfig) error {
 	return nil
 }
 
-func BootstrapCluster(cfgPath string) {
-	nodeCfg, err := LoadNodeConfig(cfgPath)
+func BootstrapCluster(cfgPath string, nodeID string) {
+	cfg, err := LoadNodeConfig(cfgPath)
 	if err != nil {
 		panic(err)
 	}
-	s, err := NewStore(nodeCfg)
+	var nodeCfg *NodeConfig
+	for _, node := range cfg.Nodes {
+		if node.NodeID == nodeID {
+			nodeCfg = node
+			break
+		}
+	}
+	if nodeCfg == nil {
+		panic(fmt.Errorf("未找到指定 NodeID=%s 的节点配置", nodeID))
+	}
+
+	s, err := NewStore(cfg.Common, nodeCfg)
 	if err != nil {
 		panic(err)
 	}
-	if err := s.Open(nodeCfg); err != nil {
+	if err := s.Open(cfg.Common, nodeCfg); err != nil {
 		panic(err)
 	}
 
@@ -277,6 +268,7 @@ func BootstrapCluster(cfgPath string) {
 	}
 	// we're up and running!
 	logger.Info(fmt.Sprintf("node started successfully, listening on grpc: %s", nodeCfg.GrpcAddr))
+	fmt.Println(s.kv.Path, s.kv.Snapshot)
 	terminate := make(chan os.Signal, 1)
 	signal.Notify(terminate, os.Interrupt)
 	<-terminate
@@ -289,7 +281,7 @@ func Assert(cond bool) {
 	}
 }
 
-func LoadNodeConfig(path string) (*NodeConfig, error) {
+func LoadNodeConfig(path string) (*Config, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get absolute path: %w", err)
@@ -299,12 +291,15 @@ func LoadNodeConfig(path string) (*NodeConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
-	var cfg NodeConfig
+	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
 	}
-	cfg.RaftDir = resolvePath(baseDir, cfg.RaftDir)
-	cfg.KVPath = resolvePath(baseDir, cfg.KVPath)
+	for _, node := range cfg.Nodes {
+		node.RaftDir = resolvePath(baseDir, node.RaftDir)
+		node.KVPath = resolvePath(baseDir, node.KVPath)
+		node.KVLogPath = resolvePath(baseDir, node.KVLogPath)
+	}
 
 	return &cfg, nil
 }

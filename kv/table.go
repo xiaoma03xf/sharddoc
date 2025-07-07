@@ -1,4 +1,4 @@
-package storage
+package kv
 
 import (
 	"bytes"
@@ -6,17 +6,13 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"io"
-	"math"
-	"os"
-	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 )
 
 type DB struct {
-	Path string
+	Path     string
+	Snapshot string
 	// internals
 	kv     KV
 	mu     sync.Mutex           // for the cached table schema
@@ -585,6 +581,7 @@ func (tx *DBTX) Delete(table string, rec Record) (bool, error) {
 // 初始化数据库实例, 打开底层KV存储
 func (db *DB) Open() error {
 	db.kv.Path = db.Path
+	db.kv.Snapshot = db.Snapshot
 	db.tables = map[string]*TableDef{} // 初始化表缓存
 	return db.kv.Open()                // 打开KV存储文件
 }
@@ -700,6 +697,8 @@ func dbScan(tx *DBTX, tdef *TableDef, req *Scanner) error {
 	req.tx = tx
 	req.tdef = tdef
 	// 1. select the index
+	//假如你的扫描键是 (colA, colB)
+	// 那么选中的索引必须前缀覆盖 (colA, colB)，比如 (colA, colB, colC) 是可以的
 	isCovered := func(index []string) bool {
 		key := req.Key1.Cols
 		return len(index) >= len(key) && slices.Equal(index[:len(key)], key)
@@ -723,174 +722,4 @@ func (tx *DBTX) Scan(table string, req *Scanner) error {
 		return fmt.Errorf("table not found: %s", table)
 	}
 	return dbScan(tx, tdef, req)
-}
-
-func (db *DB) GetAllTables() (t []TableDef, e error) {
-	tx := DBTX{}
-	db.Begin(&tx)
-	sc := &Scanner{
-		Cmp1: CMP_GE,
-		Cmp2: CMP_LE,
-		Key1: *(&Record{}).AddStr("name", []byte(MIN_NAME)),
-		Key2: *(&Record{}).AddStr("name", []byte(MAX_NAME)),
-	}
-	if err := tx.Scan("@table", sc); err != nil {
-		return nil, fmt.Errorf("query table info error")
-	}
-	err := db.Commit(&tx)
-	if err != nil {
-		return nil, err
-	}
-	// json unmarshal
-	rec := reduceSelectData(sc)
-	for _, r := range rec {
-		tdef := &TableDef{}
-		err = json.Unmarshal(r.Get("def").Str, tdef)
-		assert(err == nil)
-		t = append(t, *tdef)
-	}
-	return
-}
-
-// 获取当前db 所有表结构, 主要用于创建db逻辑快照
-// snapshotDir, 假如数据库名为 r.db 其中两张表 tbl_test1,tbl_test2
-// 会生成 r_export 文件目录, 下面包含有schema.json存有数据库表信息
-// tbl_test1.data, tbl_test2.data 分别把每个表的数据 Record{}二进制编码
-func (db *DB) ExportDB() (snapshotDir string, err error) {
-	if strings.HasSuffix(db.Path, ".db") {
-		snapshotDir = db.Path[:len(db.Path)-3] + "_export"
-	} else {
-		snapshotDir = db.Path + "_export"
-	}
-	// 1. 创建快照目录
-	if err = os.MkdirAll(snapshotDir, 0755); err != nil {
-		return
-	}
-	// 2. 获取所有的表结构,表结构存入json
-	allTables, err := db.GetAllTables()
-	if err != nil {
-		return "", err
-	}
-	// 写入表结构 snapshotDir目录下的schema.json
-	file, _ := os.Create(filepath.Join(snapshotDir, "schema.json"))
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", " ")
-	if err = encoder.Encode(allTables); err != nil {
-		return "", err
-	}
-	// 把每张表的数据写入对应文件
-	for _, table := range allTables {
-		datapath := filepath.Join(snapshotDir, table.Name+".data")
-		dataFile, err := os.Create(datapath)
-		if err != nil {
-			return "", err
-		}
-		// 查询当前表的所有数据
-		tx := DBTX{}
-		db.Begin(&tx)
-		sc := &Scanner{
-			Cmp1: CMP_GE,
-			Cmp2: CMP_LE,
-			Key1: *(&Record{}).AddInt64("id", math.MinInt64/2),
-			Key2: *(&Record{}).AddInt64("id", math.MaxInt64/2),
-		}
-		if err := tx.Scan(table.Name, sc); err != nil {
-			return snapshotDir, err
-		}
-		if err = db.Commit(&tx); err != nil {
-			return "", err
-		}
-		recs := reduceSelectData(sc)
-		enc := gob.NewEncoder(dataFile)
-		for _, rec := range recs {
-			if err := enc.Encode(rec); err != nil {
-				_ = dataFile.Close()
-				return "", err
-			}
-		}
-		_ = dataFile.Close()
-	}
-	return
-}
-
-// LoadRecordsFromDataFile 从gob编码中读取数据库数据
-func LoadRecordsFromDataFile(dataPath string) ([]Record, error) {
-	dataFile, _ := os.Open(dataPath)
-	defer dataFile.Close()
-	dec := gob.NewDecoder(dataFile)
-
-	var records []Record
-	for {
-		var rec Record
-		err := dec.Decode(&rec)
-		if err == io.EOF {
-			break // 读取完毕
-		}
-		if err != nil {
-			return nil, err // 中途出错
-		}
-		records = append(records, rec)
-	}
-	return records, nil
-}
-
-// ImportDB. dbDir 表示要恢复的文件夹
-func ImportDB(dbDir, dbname string) (*DB, error) {
-	r := &DB{Path: dbname}
-	if err := r.Open(); err != nil {
-		return nil, err
-	}
-	// 读取表结构,并创建表
-	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
-		return nil, fmt.Errorf("snapshot directory %s does not exist", dbDir)
-	}
-
-	schemaPath := filepath.Join(dbDir, "schema.json")
-	jsonBytes, err := os.ReadFile(schemaPath)
-	if err != nil {
-		return nil, fmt.Errorf("faild to read schema.json: %v", err)
-	}
-	// 读取表结构, 创建表
-	var defs []TableDef
-	if err := json.Unmarshal(jsonBytes, &defs); err != nil {
-		return nil, fmt.Errorf("faild to unmarshal schema.json:%v", err)
-	}
-
-	var wg sync.WaitGroup
-	tx := &DBTX{}
-	r.Begin(tx)
-	var _err error
-	for _, def := range defs {
-		wg.Add(1)
-		go func(def TableDef) {
-			defer wg.Done()
-			// 将def的prefix清空
-			def.Prefixes = []uint32{}
-			if err := tx.TableNew(&def); err != nil {
-				_err = fmt.Errorf("failed to create table: %v", err)
-			}
-			datapath := filepath.Join(dbDir, def.Name+".data")
-			recs, err := LoadRecordsFromDataFile(datapath)
-			if err != nil {
-				_err = fmt.Errorf("load recs err:%v", err)
-			}
-			for _, rec := range recs {
-				if _, err := tx.Insert(def.Name, rec); err != nil {
-					_err = err
-				}
-			}
-		}(def)
-	}
-	wg.Wait()
-	if _err != nil {
-		r.Abort(tx)
-		return nil, _err
-	}
-	// 提交事务
-	if err := r.Commit(tx); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %v", err)
-	}
-	return r, nil
 }

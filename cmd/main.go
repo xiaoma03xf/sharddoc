@@ -12,9 +12,11 @@ import (
 )
 
 var cfgpath string
+var nodeID string
 
 func init() {
 	flag.StringVar(&cfgpath, "config", "", "Bootstrap node thorough this path")
+	flag.StringVar(&nodeID, "node", "", "Node ID to start")
 	// log.SetFlags(log.LstdFlags | log.Llongfile)
 	log.SetOutput(&utils.InterceptWriter{
 		W:     os.Stderr,
@@ -29,9 +31,9 @@ func main() {
 	}()
 
 	flag.Parse()
-	if cfgpath == "" {
-		fmt.Fprintf(os.Stderr, "No Bootstrap path")
+	if cfgpath == "" || nodeID == "" {
+		fmt.Fprintf(os.Stderr, "Usage: -config <path> -node <node_id>\n")
 		os.Exit(1)
 	}
-	raft.BootstrapCluster(cfgpath)
+	raft.BootstrapCluster(cfgpath, nodeID)
 }

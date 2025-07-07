@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -28,6 +29,11 @@ var snapshotBatchPool = sync.Pool{
 }
 
 func (kv *KV) asyncSnapshot(tx *KVTX, wals *pb.SnapshotBatch) error {
+	// 确保目录存在
+	if err := os.MkdirAll(filepath.Dir(kv.Snapshot), 0755); err != nil {
+		return fmt.Errorf("failed to create snapshot directory: %w", err)
+	}
+
 	// 打开文件：如果文件不存在则创建文件，存在则以追加模式打开
 	file, err := os.OpenFile(kv.Snapshot, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {

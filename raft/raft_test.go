@@ -12,8 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/xiaoma03xf/sharddoc/kv"
+	"github.com/xiaoma03xf/sharddoc/raft/etcd"
 	"github.com/xiaoma03xf/sharddoc/raft/pb"
-	"github.com/xiaoma03xf/sharddoc/server/etcd"
 )
 
 func TestStoreInterface(t *testing.T) {
@@ -37,19 +37,17 @@ func TestStoreInterface(t *testing.T) {
 
 }
 func TestBootStrap(t *testing.T) {
-	defer func() {
-		os.RemoveAll("../clusterdb")
-	}()
-	conf1 := "../node1.yaml"
-	conf2 := "../node2.yaml"
-	conf3 := "../node3.yaml"
+	// defer func() {
+	// 	os.RemoveAll("../clusterdb")
+	// }()
+	// conf := "../cluster1.yaml"
 
-	go BootstrapCluster(conf1)
-	time.Sleep(2 * time.Second)
-	go BootstrapCluster(conf2)
-	time.Sleep(2 * time.Second)
-	go BootstrapCluster(conf3)
-	time.Sleep(2 * time.Second)
+	// go BootstrapCluster(conf, "node1")
+	// time.Sleep(2 * time.Second)
+	// go BootstrapCluster(conf, "node2")
+	// time.Sleep(2 * time.Second)
+	// go BootstrapCluster(conf, "node3")
+	// time.Sleep(2 * time.Second)
 
 	// High-concurrency read/write test
 	const (
@@ -155,18 +153,16 @@ func TestBootStrap(t *testing.T) {
 }
 
 func TestBatchInsert(t *testing.T) {
-	defer func() {
-		os.RemoveAll("../clusterdb")
-	}()
-	conf1 := "../node1.yaml"
-	conf2 := "../node2.yaml"
-	conf3 := "../node3.yaml"
+	// defer func() {
+	// 	os.RemoveAll("../clusterdb")
+	// }()
+	conf := "../cluster1.yaml"
 
-	go BootstrapCluster(conf1)
+	go BootstrapCluster(conf, "node1")
 	time.Sleep(2 * time.Second)
-	go BootstrapCluster(conf2)
+	go BootstrapCluster(conf, "node2")
 	time.Sleep(2 * time.Second)
-	go BootstrapCluster(conf3)
+	go BootstrapCluster(conf, "node3")
 	time.Sleep(2 * time.Second)
 
 	// Generate key-value pairs
@@ -201,22 +197,20 @@ func TestBatchInsert(t *testing.T) {
 }
 
 func TestEtcdConf(t *testing.T) {
-	// defer func() {
-	// 	os.RemoveAll("../clusterdb")
-	// }()
-	// conf1 := "../node1.yaml"
-	// conf2 := "../node2.yaml"
-	// conf3 := "../node3.yaml"
+	defer func() {
+		os.RemoveAll("../clusterdb")
+	}()
+	conf := "../cluster1.yaml"
 
-	// go BootstrapCluster(conf1)
-	// time.Sleep(2 * time.Second)
-	// go BootstrapCluster(conf2)
-	// time.Sleep(2 * time.Second)
-	// go BootstrapCluster(conf3)
-	// time.Sleep(2 * time.Second)
+	go BootstrapCluster(conf, "node1")
+	time.Sleep(2 * time.Second)
+	go BootstrapCluster(conf, "node2")
+	time.Sleep(2 * time.Second)
+	go BootstrapCluster(conf, "node3")
+	time.Sleep(2 * time.Second)
 
-	// 启动后检测当前集群状态
-	leaderAddr := "127.0.0.1:29003"
+	// 启动后检测当前集群状态，询问node3当前集群状态
+	leaderAddr := "127.0.0.1:29002"
 	localClient, localConn, err := BuildGrpcConn(leaderAddr)
 	Assert(err == nil)
 	defer localConn.Close()
@@ -229,7 +223,7 @@ func TestEtcdConf(t *testing.T) {
 	fmt.Println("Follower:", resp.Follower)
 
 	endpoints := []string{"118.89.66.104:2379"}
-	clusterID := "cluster1"
+	clusterID := []string{"cluster1"}
 
 	// 检测此时etcd服务
 	sd, err := etcd.NewServiceDiscovery(endpoints, clusterID)
@@ -238,8 +232,7 @@ func TestEtcdConf(t *testing.T) {
 	}
 	defer sd.Close()
 	sd.Start()
-	servicesMp := sd.GetServices()
-	for _, v := range servicesMp {
-		fmt.Println("etcd server:", v.Addr) // ?
-	}
+	// 获取当前etcd中的leader
+	res := sd.GetServiceByClusterID("cluster1")
+	fmt.Println("当前leader信息", res.Addr)
 }

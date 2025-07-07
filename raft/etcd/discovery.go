@@ -20,13 +20,14 @@ type ServiceInfo struct {
 
 // ServiceDiscovery etcd服务发现器
 type ServiceDiscovery struct {
-	client     *clientv3.Client
-	services   map[string]*ServiceInfo // 所有clusterID对应的Info
+	client *clientv3.Client
+	mutex  sync.RWMutex
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	clusterIDs []string
-	mutex      sync.RWMutex
-	watchChan  chan struct{}
-	ctx        context.Context
-	cancel     context.CancelFunc
+	services   map[string]*ServiceInfo // 所有clusterID对应的Info
+	watchChans map[string]chan struct{}
 }
 
 func NewServiceDiscovery(endpoints []string, clusterIDs []string) (*ServiceDiscovery, error) {
@@ -43,12 +44,13 @@ func NewServiceDiscovery(endpoints []string, clusterIDs []string) (*ServiceDisco
 		client:     client,
 		services:   make(map[string]*ServiceInfo),
 		clusterIDs: clusterIDs,
-		watchChan:  make(chan struct{}, 1),
+		watchChans: make(map[string]chan struct{}),
 		ctx:        ctx,
 		cancel:     cancel,
 	}
 	for _, cid := range clusterIDs {
 		sd.services[cid] = &ServiceInfo{}
+		sd.watchChans[cid] = make(chan struct{}, 1)
 	}
 	return sd, nil
 }
@@ -66,37 +68,35 @@ func (sd *ServiceDiscovery) Start() error {
 
 func (sd *ServiceDiscovery) loadServices(clusterID string) error {
 	prefix := fmt.Sprintf("/services/%s/", clusterID)
-	for attempt := 1; attempt <= 3; attempt++ {
-		resp, err := sd.client.Get(sd.ctx, prefix, clientv3.WithPrefix())
-		if err == nil {
-			sd.mutex.Lock()
-			defer sd.mutex.Unlock()
 
-			// 清空现有服务
-			sd.services = make(map[string]*ServiceInfo)
-
-			for _, kv := range resp.Kvs {
-				addr := sd.extractAddrFromKey(string(kv.Key))
-				var serviceInfo ServiceInfo
-				if err := json.Unmarshal(kv.Value, &serviceInfo); err != nil {
-					log.Printf("解析服务信息失败: %s, err: %v", string(kv.Value), err)
-					continue
-				}
-				sd.services[addr] = &serviceInfo
-				log.Printf("发现服务: %s -> %+v", addr, serviceInfo)
-			}
-
-			// 通知服务列表更新
-			select {
-			case sd.watchChan <- struct{}{}:
-			default:
-			}
-			return nil
-		}
-		log.Printf("加载服务失败，第%d次重试: %v", attempt, err)
-		time.Sleep(time.Second * time.Duration(attempt)) // 指数退避
+	resp, err := sd.client.Get(sd.ctx, prefix, clientv3.WithPrefix())
+	if err != nil {
+		return fmt.Errorf("etcd 获取失败: %w", err)
 	}
-	return fmt.Errorf("加载服务失败，达到最大重试次数")
+
+	sd.mutex.Lock()
+	defer sd.mutex.Unlock()
+
+	// 清空现有服务
+	sd.services[clusterID] = nil
+	for _, kv := range resp.Kvs {
+		// addr := sd.extractAddrFromKey(string(kv.Key))
+		var serviceInfo ServiceInfo
+		if err := json.Unmarshal(kv.Value, &serviceInfo); err != nil {
+			log.Printf("解析服务信息失败: %s, err: %v", string(kv.Value), err)
+			continue
+		}
+		sd.services[clusterID] = &serviceInfo
+		log.Printf("发现服务: %s -> %+v", clusterID, serviceInfo)
+	}
+
+	// 通知服务列表更新
+	select {
+	case sd.watchChans[clusterID] <- struct{}{}:
+	default:
+	}
+
+	return nil
 }
 
 func (sd *ServiceDiscovery) extractAddrFromKey(key string) string {
@@ -109,12 +109,12 @@ func (sd *ServiceDiscovery) extractAddrFromKey(key string) string {
 }
 
 func (sd *ServiceDiscovery) watch(clusterID string) {
-	prefix := fmt.Sprintf("/services/%s/", sd.clusterIDs)
+	prefix := fmt.Sprintf("/services/%s/", clusterID)
 	for {
 		watchChan := sd.client.Watch(sd.ctx, prefix, clientv3.WithPrefix())
 		for resp := range watchChan {
 			for _, event := range resp.Events {
-				addr := sd.extractAddrFromKey(string(event.Kv.Key))
+				// addr := sd.extractAddrFromKey(string(event.Kv.Key))
 				switch event.Type {
 				case clientv3.EventTypePut:
 					var serviceInfo ServiceInfo
@@ -123,20 +123,20 @@ func (sd *ServiceDiscovery) watch(clusterID string) {
 						continue
 					}
 					sd.mutex.Lock()
-					sd.services[addr] = &serviceInfo
+					sd.services[clusterID] = &serviceInfo
 					sd.mutex.Unlock()
-					log.Printf("服务上线: %s -> %+v", addr, serviceInfo)
+					log.Printf("服务上线: %s -> %+v", clusterID, serviceInfo)
 
 				case clientv3.EventTypeDelete:
 					sd.mutex.Lock()
-					delete(sd.services, addr)
+					delete(sd.services, clusterID)
 					sd.mutex.Unlock()
-					log.Printf("服务下线: %s", addr)
+					log.Printf("服务下线: %s", clusterID)
 				}
 
 				// 通知服务列表更新
 				select {
-				case sd.watchChan <- struct{}{}:
+				case sd.watchChans[clusterID] <- struct{}{}:
 				default:
 				}
 			}
@@ -147,25 +147,32 @@ func (sd *ServiceDiscovery) watch(clusterID string) {
 			log.Printf("停止监听服务变化: %s", clusterID)
 			return
 		default:
-			log.Printf("Watch通道关闭，尝试重新监听: %s", clusterID)
-			time.Sleep(time.Second) // 避免快速重试
 		}
 	}
 }
 
 // GetServiceByAddr 根据地址获取特定服务
-func (sd *ServiceDiscovery) GetServiceByAddr(clusterID string) *ServiceInfo {
+func (sd *ServiceDiscovery) GetServiceByClusterID(clusterID string) *ServiceInfo {
 	sd.mutex.RLock()
 	defer sd.mutex.RUnlock()
+
 	return sd.services[clusterID]
 }
 
-func (sd *ServiceDiscovery) WatchServices() <-chan struct{} {
-	return sd.watchChan
+func (sd *ServiceDiscovery) WatchServices(clusterID string) <-chan struct{} {
+	sd.mutex.Lock()
+	defer sd.mutex.Unlock()
+
+	return sd.watchChans[clusterID]
 }
 
 func (sd *ServiceDiscovery) Close() error {
+	sd.mutex.Lock()
+	defer sd.mutex.Unlock()
+
 	sd.cancel()
-	close(sd.watchChan)
+	for _, clusterid := range sd.clusterIDs {
+		close(sd.watchChans[clusterid])
+	}
 	return sd.client.Close()
 }
