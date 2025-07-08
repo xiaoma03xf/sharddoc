@@ -38,13 +38,20 @@ func (f *Store) applyPut(data []byte) *pb.PutResponse {
 	f.mu.Lock()
 	tx := &kv.KVTX{}
 	f.kv.Begin(tx)
-	_, err := tx.Set(putreq.Key, putreq.Value)
+
+	req := &kv.UpdateReq{Key: putreq.Key, Val: putreq.Value}
+	_, err := tx.Update(req)
 	Assert(err == nil)
 	err = f.kv.Commit(tx)
 	Assert(err == nil)
 	f.mu.Unlock()
 
-	return &pb.PutResponse{Success: true, IsUpdated: true}
+	return &pb.PutResponse{
+		Success: true,
+		Updated: req.Updated,
+		Added:   req.Added,
+		Old:     req.Old,
+	}
 }
 
 func (f *Store) applyBatchPut(data []byte) *pb.BatchPutResponse {
@@ -77,13 +84,15 @@ func (f *Store) applyDelete(data []byte) *pb.DeleteResponse {
 	f.mu.Lock()
 	tx := &kv.KVTX{}
 	f.kv.Begin(tx)
-	_, err := tx.Del(&kv.DeleteReq{Key: []byte(delreq.Key)})
+
+	delReq := &kv.DeleteReq{Key: []byte(delreq.Key)}
+	_, err := tx.Del(delReq)
 	Assert(err == nil)
 	err = f.kv.Commit(tx)
 	Assert(err == nil)
 	f.mu.Unlock()
 
-	return &pb.DeleteResponse{Success: true}
+	return &pb.DeleteResponse{Success: true, Old: delReq.Old}
 }
 
 func (f *Store) Snapshot() (raft.FSMSnapshot, error) {

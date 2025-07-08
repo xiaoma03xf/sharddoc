@@ -12,8 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/xiaoma03xf/sharddoc/kv"
-	"github.com/xiaoma03xf/sharddoc/raft/etcd"
 	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"github.com/xiaoma03xf/sharddoc/server/etcd"
 )
 
 func TestStoreInterface(t *testing.T) {
@@ -231,6 +231,7 @@ func TestEtcdConf(t *testing.T) {
 		log.Fatalf("创建服务发现失败: %v", err)
 	}
 	defer sd.Close()
+
 	sd.Start()
 	// 获取当前etcd中的leader
 	res := sd.GetServiceByClusterID("cluster1")

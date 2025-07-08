@@ -17,8 +17,9 @@ import (
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/xiaoma03xf/sharddoc/kv"
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
-	"github.com/xiaoma03xf/sharddoc/raft/etcd"
 	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"github.com/xiaoma03xf/sharddoc/server/etcd"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"

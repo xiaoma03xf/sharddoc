@@ -7,12 +7,11 @@
 package pb
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -27,6 +26,7 @@ type PutRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           []byte                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	Mode          int32                  `protobuf:"varint,3,opt,name=Mode,proto3" json:"Mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -75,11 +75,20 @@ func (x *PutRequest) GetValue() []byte {
 	return nil
 }
 
+func (x *PutRequest) GetMode() int32 {
+	if x != nil {
+		return x.Mode
+	}
+	return 0
+}
+
 // PutResponse defines the response structure for Put
 type PutResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	IsUpdated     bool                   `protobuf:"varint,2,opt,name=isUpdated,proto3" json:"isUpdated,omitempty"`
+	Updated       bool                   `protobuf:"varint,2,opt,name=updated,proto3" json:"updated,omitempty"`
+	Added         bool                   `protobuf:"varint,3,opt,name=added,proto3" json:"added,omitempty"`
+	Old           []byte                 `protobuf:"bytes,4,opt,name=old,proto3" json:"old,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -121,11 +130,25 @@ func (x *PutResponse) GetSuccess() bool {
 	return false
 }
 
-func (x *PutResponse) GetIsUpdated() bool {
+func (x *PutResponse) GetUpdated() bool {
 	if x != nil {
-		return x.IsUpdated
+		return x.Updated
 	}
 	return false
+}
+
+func (x *PutResponse) GetAdded() bool {
+	if x != nil {
+		return x.Added
+	}
+	return false
+}
+
+func (x *PutResponse) GetOld() []byte {
+	if x != nil {
+		return x.Old
+	}
+	return nil
 }
 
 // GetRequest defines the request structure for Get
@@ -229,7 +252,7 @@ func (x *GetResponse) GetFound() bool {
 // DeleteRequest defines the request structure for Delete
 type DeleteRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Key           []byte                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -264,11 +287,11 @@ func (*DeleteRequest) Descriptor() ([]byte, []int) {
 	return file_kvstore_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *DeleteRequest) GetKey() string {
+func (x *DeleteRequest) GetKey() []byte {
 	if x != nil {
 		return x.Key
 	}
-	return ""
+	return nil
 }
 
 // DeleteResponse defines the response structure for Delete
@@ -276,6 +299,7 @@ type DeleteResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
 	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Old           []byte                 `protobuf:"bytes,3,opt,name=old,proto3" json:"old,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -322,6 +346,13 @@ func (x *DeleteResponse) GetError() string {
 		return x.Error
 	}
 	return ""
+}
+
+func (x *DeleteResponse) GetOld() []byte {
+	if x != nil {
+		return x.Old
+	}
+	return nil
 }
 
 // BatchPutRequest defines the request structure for BatchPut
@@ -849,14 +880,17 @@ var File_kvstore_proto protoreflect.FileDescriptor
 
 const file_kvstore_proto_rawDesc = "" +
 	"\n" +
-	"\rkvstore.proto\"4\n" +
+	"\rkvstore.proto\"H\n" +
 	"\n" +
 	"PutRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value\"E\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\x12\x12\n" +
+	"\x04Mode\x18\x03 \x01(\x05R\x04Mode\"i\n" +
 	"\vPutResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1c\n" +
-	"\tisUpdated\x18\x02 \x01(\bR\tisUpdated\"\x1e\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\aupdated\x18\x02 \x01(\bR\aupdated\x12\x14\n" +
+	"\x05added\x18\x03 \x01(\bR\x05added\x12\x10\n" +
+	"\x03old\x18\x04 \x01(\fR\x03old\"\x1e\n" +
 	"\n" +
 	"GetRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\"9\n" +
@@ -864,10 +898,11 @@ const file_kvstore_proto_rawDesc = "" +
 	"\x05value\x18\x01 \x01(\fR\x05value\x12\x14\n" +
 	"\x05found\x18\x02 \x01(\bR\x05found\"!\n" +
 	"\rDeleteRequest\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\"@\n" +
+	"\x03key\x18\x01 \x01(\fR\x03key\"R\n" +
 	"\x0eDeleteResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error\"2\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x10\n" +
+	"\x03old\x18\x03 \x01(\fR\x03old\"2\n" +
 	"\x0fBatchPutRequest\x12\x1f\n" +
 	"\x05pairs\x18\x01 \x03(\v2\t.KeyValueR\x05pairs\",\n" +
 	"\x10BatchPutResponse\x12\x18\n" +

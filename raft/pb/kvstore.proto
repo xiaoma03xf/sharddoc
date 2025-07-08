@@ -9,6 +9,8 @@ service KVStore {
     // Get a value by key
     rpc Get (GetRequest) returns (GetResponse);
     
+    // Update a value by key
+    
     // Delete a key-value pair
     rpc Delete (DeleteRequest) returns (DeleteResponse);
     
@@ -29,12 +31,15 @@ service KVStore {
 message PutRequest {
     bytes key = 1;
     bytes value = 2;
+    int32 Mode = 3;
 }
 
 // PutResponse defines the response structure for Put
 message PutResponse {
     bool success = 1;
-    bool isUpdated = 2;
+    bool updated = 2;
+    bool added = 3;
+    bytes old = 4;
 }
 
 // GetRequest defines the request structure for Get
@@ -50,13 +55,14 @@ message GetResponse {
 
 // DeleteRequest defines the request structure for Delete
 message DeleteRequest {
-    string key = 1;
+    bytes key = 1;
 }
 
 // DeleteResponse defines the response structure for Delete
 message DeleteResponse {
     bool success = 1;
     string error = 2;
+    bytes old = 3;
 }
 
 // BatchPutRequest defines the request structure for BatchPut

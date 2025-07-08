@@ -1,0 +1,38 @@
+common:
+  etcd:
+    endpoints:
+      - 118.89.66.104:2379
+    ttl: 5
+  raft_timeout: 10s
+  snapshot_interval: 30s
+  snapshot_threshold: 100000
+
+nodes:
+  - node_id: node4
+    cluster_id: cluster2
+    bootstrap: true
+    raft_addr: 127.0.0.1:28004
+    grpc_addr: 127.0.0.1:29004
+    raft_dir: ./cluster2/raft/node4
+    kv_path: ./cluster2/data/node4/node4.db
+    kv_logpath: ./cluster2/data/node4/wal.log
+
+  - node_id: node5
+    cluster_id: cluster2
+    bootstrap: false
+    join_addr: 127.0.0.1:29004
+    raft_addr: 127.0.0.1:28005
+    grpc_addr: 127.0.0.1:29005
+    raft_dir: ./cluster2/raft/node5
+    kv_path: ./cluster2/data/node5/node5.db
+    kv_logpath: ./cluster2/data/node5/wal.log
+
+  - node_id: node6
+    cluster_id: cluster2
+    bootstrap: false
+    join_addr: 127.0.0.1:29004
+    raft_addr: 127.0.0.1:28006
+    grpc_addr: 127.0.0.1:29006
+    raft_dir: ./cluster2/raft/node6
+    kv_path: ./cluster2/data/node6/node6.db
+    kv_logpath: ./cluster2/data/node6/wal.log

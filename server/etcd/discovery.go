@@ -18,7 +18,7 @@ type ServiceInfo struct {
 	Version   string `json:"version"`
 }
 
-// ServiceDiscovery etcd服务发现器
+// ServiceDiscovery etcd GRPC服务发现器
 type ServiceDiscovery struct {
 	client *clientv3.Client
 	mutex  sync.RWMutex
