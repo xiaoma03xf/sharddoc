@@ -1,3 +1,0 @@
-[store] 2025/07/09 16:25:09 grpc server listening on 127.0.0.1:29003
-/home/dengjun/sharddoc/cluster/cluster1/data/node3/node3.db /home/dengjun/sharddoc/cluster/cluster1/data/node3/wal.log
-2025/07/09 16:25:09 [INFO][raft.go:271] node started successfully, listening on grpc: 127.0.0.1:29003
