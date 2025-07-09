@@ -1,0 +1,3 @@
+[store] 2025/07/09 16:25:10 grpc server listening on 127.0.0.1:29005
+/home/dengjun/sharddoc/cluster/cluster2/data/node5/node5.db /home/dengjun/sharddoc/cluster/cluster2/data/node5/wal.log
+2025/07/09 16:25:10 [INFO][raft.go:271] node started successfully, listening on grpc: 127.0.0.1:29005

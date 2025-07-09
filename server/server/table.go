@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"slices"
 
@@ -165,6 +166,8 @@ func (db *DBServer) Set(table string, dbreq *DBUpdateReq) (bool, error) {
 	}
 	return db.dbUpdate(tdef, dbreq)
 }
+
+// use this
 func (db *DBServer) Insert(table string, rec kv.Record) (bool, error) {
 	return db.Set(table, &DBUpdateReq{Record: rec, Mode: kv.MODE_INSERT_ONLY})
 }
@@ -188,7 +191,7 @@ func (db *DBServer) dbDelete(client pb.KVStoreClient, tdef *kv.TableDef, rec kv.
 	if !req.Success || err != nil {
 		return false, nil // `deleted` is also false if the key is too long
 	}
-	
+
 	// maintain secondary indexes
 	for _, c := range nonPrimaryKeyCols(tdef) {
 		tp := tdef.Types[slices.Index(tdef.Cols, c)]
@@ -210,4 +213,70 @@ func (db *DBServer) Delete(table string, rec kv.Record) (bool, error) {
 		return false, err
 	}
 	return db.dbDelete(client, tdef, rec)
+}
+
+type Scanner struct {
+	// the range, from Key1 to Key2
+	Cmp1 int // CMP_??
+	Cmp2 int
+	Key1 kv.Record
+	Key2 kv.Record
+
+	index int // which index?
+}
+
+func (db *DBServer) dbScan(tdef *kv.TableDef, req *Scanner) ([]*pb.Record, error) {
+	// 0. sanity checks
+	switch {
+	case req.Cmp1 > 0 && req.Cmp2 < 0:
+	case req.Cmp2 > 0 && req.Cmp1 < 0:
+	default:
+		return nil, fmt.Errorf("bad range")
+	}
+	if err := kv.CheckTypes(tdef, req.Key1); err != nil {
+		return nil, err
+	}
+	if err := kv.CheckTypes(tdef, req.Key2); err != nil {
+		return nil, err
+	}
+
+	// 1. select the index, 选择合适的索引
+	covered := func(key []string, index []string) bool {
+		return len(index) >= len(key) && slices.Equal(index[:len(key)], key)
+	}
+	req.index = slices.IndexFunc(tdef.Indexes, func(index []string) bool {
+		return covered(req.Key1.Cols, index) && covered(req.Key2.Cols, index)
+	})
+	if req.index < 0 {
+		return nil, fmt.Errorf("no index")
+	}
+	// 2. encode the start key and the end key
+	prefix := tdef.Prefixes[req.index]
+	keyStart := kv.EncodeKeyPartial(nil, prefix, req.Key1.Vals, req.Cmp1)
+	keyEnd := kv.EncodeKeyPartial(nil, prefix, req.Key2.Vals, req.Cmp2)
+
+	// 3. seek to the start key
+	// get grpc serve
+	tdefBytes, err := json.Marshal(tdef)
+	if err != nil {
+		return nil, fmt.Errorf("tdef json marshal err:%v", err)
+	}
+	client, _, err := db.getGrpcClientForPrimaryKey(tdef.Indexes[0])
+	if err != nil {
+		return nil, err
+	}
+	clientReq, err := client.Scan(context.Background(), &pb.ScanRequest{
+		KeyStart: keyStart, KeyEnd: keyEnd, Cmp1: int64(req.Cmp1), Cmp2: int64(req.Cmp2), Table: tdefBytes, Index: int64(req.index),
+	})
+	return clientReq.Records, err
+}
+func (db *DBServer) Scan(tablename string, req *Scanner) ([]*pb.Record, error) {
+	tdef, err := db.getTableDef(tablename)
+	if err != nil {
+		return nil, fmt.Errorf("occur error:%v", err)
+	}
+	if tdef == nil {
+		return nil, fmt.Errorf("table is nil")
+	}
+	return db.dbScan(tdef, req)
 }

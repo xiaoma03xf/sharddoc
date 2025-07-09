@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -57,19 +59,7 @@ func TestEtcdBasic(t *testing.T) {
 	}
 	fmt.Println(resp.Me)
 }
-func ClearEtcd(endpoints []string) {
-	client, err := clientv3.New(clientv3.Config{
-		Endpoints:   endpoints,
-		DialTimeout: 5 * time.Second,
-	})
-	if err != nil {
-		panic(fmt.Errorf("failed to create etcd client: %w", err))
-	}
-	_, err = client.Delete(context.Background(), "", clientv3.WithPrefix())
-	if err != nil {
-		panic(err)
-	}
-}
+
 func TestTableNew(t *testing.T) {
 	ClearEtcd([]string{"118.89.66.104:2379"})
 
@@ -148,17 +138,65 @@ func ReadTestDataFromFile(filePath string) ([]RecordTestData, error) {
 
 	return records, nil
 }
+func ClearEtcd(endpoints []string) {
+	client, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		panic(fmt.Errorf("failed to create etcd client: %w", err))
+	}
+	_, err = client.Delete(context.Background(), "", clientv3.WithPrefix())
+	if err != nil {
+		panic(err)
+	}
+}
+func DBServerPrintQuery(recs []*pb.Record) {
+	// 打印表头
+	fmt.Printf("%-10s %-20s %-10s %-10s\n", "ID", "Name", "Age", "Height")
+	fmt.Println("---------------------------------------------------------")
+
+	for _, r := range recs {
+		var id int64
+		var name string
+		var age, height int64
+
+		for i := 0; i < len(r.Cols); i++ {
+			switch string(r.Cols[i]) {
+			case "id":
+				if r.Vals[i].Type == 2 {
+					id = r.Vals[i].I64
+				}
+			case "name":
+				if r.Vals[i].Type == 1 {
+					name = string(r.Vals[i].Str)
+				}
+			case "age":
+				if r.Vals[i].Type == 2 {
+					age = r.Vals[i].I64
+				}
+			case "height":
+				if r.Vals[i].Type == 2 {
+					height = r.Vals[i].I64
+				}
+			}
+		}
+		fmt.Printf("%-10d %-20s %-10d %-10d\n", id, name, age, height)
+	}
+}
 func TestDBBasic(t *testing.T) {
 	// go BootCluster("../../cluster1.yaml", []string{"node1", "node2", "node3"})
 	// go BootCluster("../../cluster2.yaml", []string{"node4", "node5", "node6"})
 	// go BootCluster("../../cluster3.yaml", []string{"node7", "node8", "node9"})
 	// time.Sleep(10 * time.Second)
 
-	ClearEtcd([]string{"118.89.66.104:2379"})
+	// ClearEtcd([]string{"118.89.66.104:2379"})
+
 	db, err := NewDB([]string{"118.89.66.104:2379"}, []string{"cluster1", "cluster2", "cluster3"})
 	if err != nil {
 		t.Error(err)
 	}
+	time.Sleep(5 * time.Second)
 	tdef := &kv.TableDef{
 		Name:  "user",
 		Cols:  []string{"id", "name", "age", "height"},
@@ -200,4 +238,130 @@ func TestDBBasic(t *testing.T) {
 		}
 	}
 	fmt.Printf("Added test records successfully\n")
+
+	// 测试范围查询
+	// test age == 18
+	{
+		fmt.Println("select * from table where age == 18")
+		rec := kv.Record{}
+		rec.AddInt64("age", 18)
+
+		req := Scanner{
+			Cmp1: kv.CMP_GE, Cmp2: kv.CMP_LE,
+			Key1: rec, Key2: rec,
+		}
+		recs, err := db.Scan("user", &req)
+		assert(err == nil)
+		DBServerPrintQuery(recs)
+	}
+
+	{
+		fmt.Println("select * from table where age >= 43")
+		rec1 := kv.Record{}
+		rec1.AddInt64("age", 43)
+
+		rec2 := kv.Record{}
+		rec2.AddInt64("age", math.MaxInt64/2)
+		req := Scanner{
+			Cmp1: kv.CMP_GE, Cmp2: kv.CMP_LE,
+			Key1: rec1, Key2: rec2,
+		}
+		recs, err := db.Scan("user", &req)
+		assert(err == nil)
+		DBServerPrintQuery(recs)
+	}
+
+	{
+		const MIN_NAME = ""
+		const MAX_NAME = "\xff\xff\xff\xff\xff\xff\xff\xff" // 足够长的最大字节
+
+		fmt.Println("select * from table where name > yang")
+		rec := kv.Record{}
+		rec.AddStr("name", []byte("Yang"))
+
+		rec2 := kv.Record{}
+		rec2.AddStr("name", []byte(MAX_NAME))
+		req := Scanner{
+			Cmp1: kv.CMP_GE, Cmp2: kv.CMP_LE,
+			Key1: rec, Key2: rec2,
+		}
+		recs, err := db.Scan("user", &req)
+		assert(err == nil)
+		DBServerPrintQuery(recs)
+	}
+
+	{
+		fmt.Println("select * from table where age == 18 and height == 174")
+		rec := kv.Record{}
+		rec.AddInt64("age", 18).AddInt64("height", 174)
+		req := Scanner{
+			Cmp1: kv.CMP_GE, Cmp2: kv.CMP_LE,
+			Key1: rec, Key2: rec,
+		}
+		recs, err := db.Scan("user", &req)
+		assert(err == nil)
+		DBServerPrintQuery(recs)
+	}
+
+	{
+		fmt.Println("select * from table where age == 18 and height between 170 and 175 ")
+		rec := kv.Record{}
+		rec.AddInt64("age", 18).AddInt64("height", 170)
+
+		rec2 := kv.Record{}
+		rec2.AddInt64("age", 18).AddInt64("height", 175)
+
+		req := Scanner{
+			Cmp1: kv.CMP_GE, Cmp2: kv.CMP_LE,
+			Key1: rec, Key2: rec2,
+		}
+		recs, err := db.Scan("user", &req)
+		assert(err == nil)
+		DBServerPrintQuery(recs)
+	}
+
+	{
+		fmt.Println("select * from table where age == 18 and height < 175 ")
+		rec := kv.Record{}
+		rec.AddInt64("age", 18).AddInt64("height", 0)
+
+		rec2 := kv.Record{}
+		rec2.AddInt64("age", 18).AddInt64("height", 175)
+
+		req := Scanner{
+			Cmp1: kv.CMP_GE, Cmp2: kv.CMP_LE,
+			Key1: rec, Key2: rec2,
+		}
+		recs, err := db.Scan("user", &req)
+		assert(err == nil)
+		DBServerPrintQuery(recs)
+	}
+}
+
+func TestEtcdKey(t *testing.T) {
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{"118.89.66.104:2379"}, // 替换为你的 etcd 地址
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		log.Fatalf("连接 etcd 失败: %v", err)
+	}
+	defer cli.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 获取所有键值对
+	resp, err := cli.Get(ctx, "", clientv3.WithPrefix())
+	if err != nil {
+		log.Fatalf("查询键值对失败: %v", err)
+	}
+
+	// 打印所有键值对
+	for _, kv := range resp.Kvs {
+		fmt.Printf("🔑 %s = %s\n", kv.Key, kv.Value)
+	}
+}
+
+func TestClearEtcd(t *testing.T) {
+	ClearEtcd([]string{"118.89.66.104:2379"})
 }

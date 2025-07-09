@@ -161,6 +161,11 @@ func EncodeKeyPartial(
 	return out
 }
 
+// DecodeValues 解码一个 []byte 到 []Value（逻辑字段数组）。
+// 编码格式为顺序拼接的多个字段：每个字段由 [Type(1字节)] + [实际内容] 组成。
+// 支持类型：
+// - TYPE_INT64: 后跟 8 字节大端整数（偏移 1<<63）
+// - TYPE_BYTES: 后跟转义后的字符串 + 0 结尾
 func DecodeValues(in []byte, out []Value) {
 	for i := range out {
 		assert(out[i].Type == uint32(in[0]))
@@ -182,6 +187,8 @@ func DecodeValues(in []byte, out []Value) {
 	assert(len(in) == 0)
 }
 
+// key 一般是 -> key = [prefix:4字节] + [TYPE_INT64][encoded id:8字节]格式
+// 解码key 直接去了前四个字节的 prefix 调用解码values的逻辑就行
 func DecodeKey(in []byte, out []Value) {
 	DecodeValues(in[4:], out)
 }
@@ -252,4 +259,27 @@ func checkIndexCols(tdef *TableDef, index []string) ([]string, error) {
 	}
 	assert(len(index) <= len(tdef.Cols))
 	return index, nil
+}
+
+func nonPrimaryKeyCols(tdef *TableDef) (out []string) {
+	for _, c := range tdef.Cols {
+		if slices.Index(tdef.Indexes[0], c) < 0 {
+			out = append(out, c)
+		}
+	}
+	return
+}
+
+// check column types
+func CheckTypes(tdef *TableDef, rec Record) error {
+	if len(rec.Cols) != len(rec.Vals) {
+		return fmt.Errorf("bad record")
+	}
+	for i, c := range rec.Cols {
+		j := slices.Index(tdef.Cols, c)
+		if j < 0 || tdef.Types[j] != rec.Vals[i].Type {
+			return fmt.Errorf("bad column: %s", c)
+		}
+	}
+	return nil
 }

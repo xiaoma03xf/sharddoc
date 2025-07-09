@@ -88,16 +88,30 @@ message KeyValue {
 // 	CMP_LT = -2 // <
 // 	CMP_LE = -3 // <=
 // )
+message Value {
+    uint32 type = 1;
+    int64 i64 = 2;
+    bytes str = 3;
+}
+// 表达一行记录（包括列名和值）
+message Record {
+  repeated string cols = 1;
+  repeated Value  vals = 2;
+}
+
 message ScanRequest {
-    bytes start_key = 1;
-    bytes end_key = 2;
-    uint32 start_key_op = 3;
-    uint32 end_key_op = 4;
+  bytes keyStart = 1;     // 起始键
+  bytes keyEnd = 2;     // 结束键
+  int64  cmp1  = 3;    // 比较符号1（>= 或 >）
+  int64  cmp2  = 4;    // 比较符号2（<= 或 <）
+  
+  bytes table = 5;
+  int64 index = 6;
 }
 
 // ScanResponse defines the response structure for Scan
 message ScanResponse {
-    repeated KeyValue pairs = 1;
+     repeated Record records = 1;
 }
 
 // StatusRequest defines the request structure for Status

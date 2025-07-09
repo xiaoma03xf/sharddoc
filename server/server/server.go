@@ -34,10 +34,9 @@ type DBServer struct {
 	ServiceDiscovery   *etcd.ServiceDiscovery
 	TablesDefDiscovery *etcd.TableDefRegistry
 	CacheTimeout       time.Duration
-
-	CHash *hash.Map // key -> cluster
-
-	StopCh chan struct{}
+	CHash              *hash.Map // key -> cluster
+	StopCh             chan struct{}
+	SQLParser          *SQLParser // 解释器
 }
 
 type LeaderManager struct {
@@ -74,6 +73,7 @@ func NewDB(endpoints, clusterAddrs []string) (*DBServer, error) {
 	db.TablesDefDiscovery = tablesDefDiscovery
 	db.StopCh = make(chan struct{}, 1)
 	db.CHash = cHash
+	db.SQLParser = new(SQLParser)
 
 	for _, addr := range clusterAddrs {
 		go db.RunServiceListener(addr)
@@ -161,8 +161,12 @@ func (db *DBServer) StartLeaderHealthCheck(clusterID string, interval time.Durat
 			return
 		case <-ticker.C:
 			db.mu.RLock()
-			leader := db.Leaders[clusterID]
+			leader, ok := db.Leaders[clusterID]
 			db.mu.RUnlock()
+			if !ok || leader == nil || leader.Client == nil {
+				log.Printf("[心跳检测] %s 无法执行 ping，因为 leader 或 client 为 nil", clusterID)
+				continue
+			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			_, err := leader.Client.Status(ctx, &pb.StatusRequest{})

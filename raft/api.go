@@ -2,13 +2,17 @@ package raft
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/hashicorp/raft"
 	"github.com/xiaoma03xf/sharddoc/kv"
 	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -199,6 +203,129 @@ func (s *Store) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, e
 	return &pb.GetResponse{Value: val, Found: found}, nil
 }
 
-func (s *Store) Scan(context.Context, *pb.ScanRequest) (*pb.ScanResponse, error) {
-	return &pb.ScanResponse{}, nil
+func nonPrimaryKeyCols(tdef *kv.TableDef) (out []string) {
+	for _, c := range tdef.Cols {
+		if slices.Index(tdef.Indexes[0], c) < 0 {
+			out = append(out, c)
+		}
+	}
+	return
+}
+func (s *Store) Scan(ctx context.Context, req *pb.ScanRequest) (*pb.ScanResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 执行Get操作
+	tx := kv.KVTX{}
+	s.kv.Begin(&tx)
+
+	KVIter := tx.Seek(req.KeyStart, int(req.Cmp1), req.KeyEnd, int(req.Cmp2))
+	err := s.kv.Commit(&tx)
+	Assert(err == nil)
+
+	// 获取table信息
+	var tdef kv.TableDef
+	err = json.Unmarshal(req.Table, &tdef)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "cannot unmarshal kv.TableDef")
+	}
+
+	// 遍历迭代器
+	got := []*pb.Record{}
+	for KVIter.Valid() {
+		rec := &kv.Record{}
+		// decode the index key
+		// 用的是二级索引
+		// 二级索引只编码了 索引字段 + 主键字段，不存储原始值（val 是空的）。
+		// 解码出主键字段后，构造主键 Record。
+		// 然后用主键再去 执行一次主键查询 dbGet()，把这一行补全回来
+		// fetch the KV from the iterator
+
+		// pkCols, nonPKCols 取出主键字段和非主键字段
+		// 把主键列和非主键列拼接成完整列顺序：["id", "name", "age"]
+		rec.Cols = slices.Concat(tdef.Indexes[0], nonPrimaryKeyCols(&tdef))
+		rec.Vals = rec.Vals[:0]
+		for _, c := range rec.Cols {
+			//为每个列设置对应的类型（在 Value.Type 字段里设置）
+			// tdef.Cols = ["id", "name", "age"]
+			// tdef.Types = [TYPE_INT, TYPE_STRING, TYPE_INT]
+			// 最后 rec.Vals = [{Type: INT}, {Type: STRING}, {Type: INT}]
+			tp := tdef.Types[slices.Index(tdef.Cols, c)]
+			rec.Vals = append(rec.Vals, kv.Value{Type: tp})
+		}
+
+		// 主键索引：直接解码 key 和 val
+		key, val := KVIter.Deref()
+		// primary key or secondary index?
+		if req.Index == 0 {
+
+			// key = prefix + encode(1)（即 id）
+			// key : prefix + (1字节类型标识位) + id
+			// val = encode("Alice", 20)（即 name 和 age）
+			// val = (1字节类型标识位) + id + (1字节类型标识位) + id...
+			npk := len(tdef.Indexes[0])
+			kv.DecodeKey(key, rec.Vals[:npk])
+			kv.DecodeValues(val, rec.Vals[npk:])
+
+		} else {
+			// 二级索引：解 key -> 提取主键字段 -> 构造主键 key -> tx.Get(key) -> 解 val
+			// prefix id 主键索引
+			// prefix name age id
+			// irec 的cols为索引值 如 name age
+			// 然后找到name, age对应的类型 Type
+			Assert(len(val) == 0) // 二级索引没存 value
+			index := tdef.Indexes[req.Index]
+			irec := kv.Record{
+				Cols: index,
+				Vals: make([]kv.Value, len(index)),
+			}
+			// 为索引列设置类型
+			for i, c := range index {
+				irec.Vals[i].Type = tdef.Types[slices.Index(tdef.Cols, c)]
+			}
+			kv.DecodeKey(key, irec.Vals)
+
+			// 假如我的二级索引为name age，那么格式就为[prefix:4字节][name][age][id]
+			// extract the primary key
+			for i, c := range tdef.Indexes[0] {
+				rec.Vals[i] = *irec.Get(c)
+			}
+
+			// fetch the row by the primary key
+			// TODO: skip this if the index contains all the columns
+			pkKey := kv.EncodeKey(nil, tdef.Prefixes[0], rec.Vals[:len(tdef.Indexes[0])])
+			val, ok := tx.Get(pkKey)
+			if !ok || val == nil {
+				return nil, status.Errorf(codes.NotFound, "primary key not found for index entry: %+v", pkKey)
+			}
+
+			npk := len(tdef.Indexes[0])
+			kv.DecodeValues(val, rec.Vals[npk:])
+		}
+
+		got = append(got, kvRecordToPbRecord(*rec))
+		KVIter.Next()
+	}
+
+	return &pb.ScanResponse{
+		Records: got,
+	}, nil
+}
+
+func kvRecordToPbRecord(kvRec kv.Record) *pb.Record {
+	pbRec := &pb.Record{
+		Cols: make([]string, len(kvRec.Cols)),
+		Vals: make([]*pb.Value, len(kvRec.Vals)),
+	}
+	// 复制 Cols
+	copy(pbRec.Cols, kvRec.Cols)
+	// 转换 Vals
+	for i, kvVal := range kvRec.Vals {
+		pbRec.Vals[i] = &pb.Value{
+			Type: kvVal.Type,
+			I64:  kvVal.I64,
+			Str:  kvVal.Str,
+		}
+	}
+	return pbRec
 }

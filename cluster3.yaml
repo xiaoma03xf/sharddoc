@@ -13,9 +13,9 @@ nodes:
     bootstrap: true
     raft_addr: 127.0.0.1:28007
     grpc_addr: 127.0.0.1:29007
-    raft_dir: ./cluster3/raft/node7
-    kv_path: ./cluster3/data/node7/node7.db
-    kv_logpath: ./cluster3/data/node7/wal.log
+    raft_dir: ./cluster/cluster3/raft/node7
+    kv_path: ./cluster/cluster3/data/node7/node7.db
+    kv_logpath: ./cluster/cluster3/data/node7/wal.log
 
   - node_id: node8
     cluster_id: cluster3
@@ -23,9 +23,9 @@ nodes:
     join_addr: 127.0.0.1:29007
     raft_addr: 127.0.0.1:28008
     grpc_addr: 127.0.0.1:29008
-    raft_dir: ./cluster3/raft/node8
-    kv_path: ./cluster3/data/node8/node8.db
-    kv_logpath: ./cluster3/data/node8/wal.log
+    raft_dir: ./cluster/cluster3/raft/node8
+    kv_path: ./cluster/cluster3/data/node8/node8.db
+    kv_logpath: ./cluster/cluster3/data/node8/wal.log
 
   - node_id: node9
     cluster_id: cluster3
@@ -33,6 +33,6 @@ nodes:
     join_addr: 127.0.0.1:29007
     raft_addr: 127.0.0.1:28009
     grpc_addr: 127.0.0.1:29009
-    raft_dir: ./cluster3/raft/node9
-    kv_path: ./cluster3/data/node9/node9.db
-    kv_logpath: ./cluster3/data/node9/wal.log
+    raft_dir: ./cluster/cluster3/raft/node9
+    kv_path: ./cluster/cluster3/data/node9/node9.db
+    kv_logpath: ./cluster/cluster3/data/node9/wal.log
