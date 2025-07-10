@@ -9,7 +9,7 @@ import (
 	"net"
 
 	"github.com/google/uuid"
-	"github.com/xiaoma03xf/sharddoc/storage"
+	"github.com/xiaoma03xf/sharddoc/discarded/storage"
 )
 
 type Response struct {

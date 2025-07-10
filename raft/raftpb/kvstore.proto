@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "../pb;pb";
+option go_package = "../raftpb;raftpb";
 
 service KVStore {
     // Put a key-value pair
@@ -31,7 +31,7 @@ service KVStore {
 message PutRequest {
     bytes key = 1;
     bytes value = 2;
-    int32 Mode = 3;
+    int32 mode = 3;
 }
 
 // PutResponse defines the response structure for Put
@@ -138,4 +138,18 @@ message JoinRequest {
 message JoinResponse {
     bool success = 1;
 }
+enum OperationType {
+    PUT = 0;
+    GET = 1;
+    DELETE = 3;
+    BATCHPUT = 4;
+    SCAN = 5;
+}
+message Operation {
+    OperationType type = 1;
+    bytes data = 2;
+    uint64 term = 3;
+    uint64 index = 4;
+}
+
 // protoc --go_out=. --go-grpc_out=. kvstore.proto

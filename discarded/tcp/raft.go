@@ -12,7 +12,7 @@ import (
 
 	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
-	"github.com/xiaoma03xf/sharddoc/storage"
+	"github.com/xiaoma03xf/sharddoc/discarded/storage"
 )
 
 const (

@@ -30,25 +30,7 @@ func (a *SQLParser) BuildTree(sql string) antlr.ParseTree {
 	}
 	return tree
 }
-func (a *SQLParser) CheckSQLType(sql string) int {
-	ctx := a.BuildTree(sql).(*ast.SqlContext)
-	for i := 0; i < ctx.GetChildCount(); i++ {
-		child := ctx.GetChild(i)
-		switch child.(type) {
-		case *ast.CreateTableStatementContext:
-			return TableNewType
-		case *ast.InsertTableStatementContext:
-			return InsertData
-		case *ast.SelectTableStatementContext:
-			return SelectData
-		case *ast.UpdateTableStatementContext:
-			return UpdateData
-		case *ast.DeleteTableStatementContext:
-			return DeleteData
-		}
-	}
-	return UnKnowType
-}
+
 func (a *SQLParser) Visit(tree antlr.ParseTree) interface{} {
 	return a.VisitSql(tree.(*ast.SqlContext))
 }
@@ -513,16 +495,6 @@ func selectPareLinkBetween(scan *Scanner, ctx *ast.ConditionsContext) error {
 	return nil
 }
 
-//	func reduceSelectData(scan *Scanner) []kv.Record {
-//		got := []kv.Record{}
-//		for scan.Valid() {
-//			rec := Record{}
-//			scan.Deref(&rec)
-//			got = append(got, rec)
-//			scan.Next()
-//		}
-//		return got
-//	}
 func (v *SQLParser) VisitSelectTableStatement(ctx *ast.SelectTableStatementContext) interface{} {
 	// todo current support select sync, 暂时只支持两个条件
 	// select * from table where age > 18 and age < 40 相同键位

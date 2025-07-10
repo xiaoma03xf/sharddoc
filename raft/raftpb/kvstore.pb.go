@@ -4,7 +4,7 @@
 // 	protoc        v3.21.5
 // source: kvstore.proto
 
-package pb
+package raftpb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -21,12 +21,67 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type OperationType int32
+
+const (
+	OperationType_PUT      OperationType = 0
+	OperationType_GET      OperationType = 1
+	OperationType_DELETE   OperationType = 3
+	OperationType_BATCHPUT OperationType = 4
+	OperationType_SCAN     OperationType = 5
+)
+
+// Enum value maps for OperationType.
+var (
+	OperationType_name = map[int32]string{
+		0: "PUT",
+		1: "GET",
+		3: "DELETE",
+		4: "BATCHPUT",
+		5: "SCAN",
+	}
+	OperationType_value = map[string]int32{
+		"PUT":      0,
+		"GET":      1,
+		"DELETE":   3,
+		"BATCHPUT": 4,
+		"SCAN":     5,
+	}
+)
+
+func (x OperationType) Enum() *OperationType {
+	p := new(OperationType)
+	*p = x
+	return p
+}
+
+func (x OperationType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OperationType) Descriptor() protoreflect.EnumDescriptor {
+	return file_kvstore_proto_enumTypes[0].Descriptor()
+}
+
+func (OperationType) Type() protoreflect.EnumType {
+	return &file_kvstore_proto_enumTypes[0]
+}
+
+func (x OperationType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OperationType.Descriptor instead.
+func (OperationType) EnumDescriptor() ([]byte, []int) {
+	return file_kvstore_proto_rawDescGZIP(), []int{0}
+}
+
 // PutRequest defines the request structure for Put
 type PutRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           []byte                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-	Mode          int32                  `protobuf:"varint,3,opt,name=Mode,proto3" json:"Mode,omitempty"`
+	Mode          int32                  `protobuf:"varint,3,opt,name=mode,proto3" json:"mode,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1005,6 +1060,74 @@ func (x *JoinResponse) GetSuccess() bool {
 	return false
 }
 
+type Operation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          OperationType          `protobuf:"varint,1,opt,name=type,proto3,enum=OperationType" json:"type,omitempty"`
+	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	Term          uint64                 `protobuf:"varint,3,opt,name=term,proto3" json:"term,omitempty"`
+	Index         uint64                 `protobuf:"varint,4,opt,name=index,proto3" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Operation) Reset() {
+	*x = Operation{}
+	mi := &file_kvstore_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Operation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Operation) ProtoMessage() {}
+
+func (x *Operation) ProtoReflect() protoreflect.Message {
+	mi := &file_kvstore_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Operation.ProtoReflect.Descriptor instead.
+func (*Operation) Descriptor() ([]byte, []int) {
+	return file_kvstore_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *Operation) GetType() OperationType {
+	if x != nil {
+		return x.Type
+	}
+	return OperationType_PUT
+}
+
+func (x *Operation) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *Operation) GetTerm() uint64 {
+	if x != nil {
+		return x.Term
+	}
+	return 0
+}
+
+func (x *Operation) GetIndex() uint64 {
+	if x != nil {
+		return x.Index
+	}
+	return 0
+}
+
 var File_kvstore_proto protoreflect.FileDescriptor
 
 const file_kvstore_proto_rawDesc = "" +
@@ -1014,7 +1137,7 @@ const file_kvstore_proto_rawDesc = "" +
 	"PutRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value\x12\x12\n" +
-	"\x04Mode\x18\x03 \x01(\x05R\x04Mode\"i\n" +
+	"\x04mode\x18\x03 \x01(\x05R\x04mode\"i\n" +
 	"\vPutResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\aupdated\x18\x02 \x01(\bR\aupdated\x12\x14\n" +
@@ -1068,7 +1191,19 @@ const file_kvstore_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\"(\n" +
 	"\fJoinResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2\x9e\x02\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"m\n" +
+	"\tOperation\x12\"\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x0e.OperationTypeR\x04type\x12\x12\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\x12\x12\n" +
+	"\x04term\x18\x03 \x01(\x04R\x04term\x12\x14\n" +
+	"\x05index\x18\x04 \x01(\x04R\x05index*E\n" +
+	"\rOperationType\x12\a\n" +
+	"\x03PUT\x10\x00\x12\a\n" +
+	"\x03GET\x10\x01\x12\n" +
+	"\n" +
+	"\x06DELETE\x10\x03\x12\f\n" +
+	"\bBATCHPUT\x10\x04\x12\b\n" +
+	"\x04SCAN\x10\x052\x9e\x02\n" +
 	"\aKVStore\x12 \n" +
 	"\x03Put\x12\v.PutRequest\x1a\f.PutResponse\x12 \n" +
 	"\x03Get\x12\v.GetRequest\x1a\f.GetResponse\x12)\n" +
@@ -1076,8 +1211,7 @@ const file_kvstore_proto_rawDesc = "" +
 	"\bBatchPut\x12\x10.BatchPutRequest\x1a\x11.BatchPutResponse\x12#\n" +
 	"\x04Scan\x12\f.ScanRequest\x1a\r.ScanResponse\x12)\n" +
 	"\x06Status\x12\x0e.StatusRequest\x1a\x0f.StatusResponse\x12#\n" +
-	"\x04Join\x12\f.JoinRequest\x1a\r.JoinResponseB\n" +
-	"Z\b../pb;pbb\x06proto3"
+	"\x04Join\x12\f.JoinRequest\x1a\r.JoinResponseB\x12Z\x10../raftpb;raftpbb\x06proto3"
 
 var (
 	file_kvstore_proto_rawDescOnce sync.Once
@@ -1091,53 +1225,57 @@ func file_kvstore_proto_rawDescGZIP() []byte {
 	return file_kvstore_proto_rawDescData
 }
 
-var file_kvstore_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_kvstore_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_kvstore_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_kvstore_proto_goTypes = []any{
-	(*PutRequest)(nil),       // 0: PutRequest
-	(*PutResponse)(nil),      // 1: PutResponse
-	(*GetRequest)(nil),       // 2: GetRequest
-	(*GetResponse)(nil),      // 3: GetResponse
-	(*DeleteRequest)(nil),    // 4: DeleteRequest
-	(*DeleteResponse)(nil),   // 5: DeleteResponse
-	(*BatchPutRequest)(nil),  // 6: BatchPutRequest
-	(*BatchPutResponse)(nil), // 7: BatchPutResponse
-	(*KeyValue)(nil),         // 8: KeyValue
-	(*Value)(nil),            // 9: Value
-	(*Record)(nil),           // 10: Record
-	(*ScanRequest)(nil),      // 11: ScanRequest
-	(*ScanResponse)(nil),     // 12: ScanResponse
-	(*StatusRequest)(nil),    // 13: StatusRequest
-	(*Node)(nil),             // 14: Node
-	(*StatusResponse)(nil),   // 15: StatusResponse
-	(*JoinRequest)(nil),      // 16: JoinRequest
-	(*JoinResponse)(nil),     // 17: JoinResponse
+	(OperationType)(0),       // 0: OperationType
+	(*PutRequest)(nil),       // 1: PutRequest
+	(*PutResponse)(nil),      // 2: PutResponse
+	(*GetRequest)(nil),       // 3: GetRequest
+	(*GetResponse)(nil),      // 4: GetResponse
+	(*DeleteRequest)(nil),    // 5: DeleteRequest
+	(*DeleteResponse)(nil),   // 6: DeleteResponse
+	(*BatchPutRequest)(nil),  // 7: BatchPutRequest
+	(*BatchPutResponse)(nil), // 8: BatchPutResponse
+	(*KeyValue)(nil),         // 9: KeyValue
+	(*Value)(nil),            // 10: Value
+	(*Record)(nil),           // 11: Record
+	(*ScanRequest)(nil),      // 12: ScanRequest
+	(*ScanResponse)(nil),     // 13: ScanResponse
+	(*StatusRequest)(nil),    // 14: StatusRequest
+	(*Node)(nil),             // 15: Node
+	(*StatusResponse)(nil),   // 16: StatusResponse
+	(*JoinRequest)(nil),      // 17: JoinRequest
+	(*JoinResponse)(nil),     // 18: JoinResponse
+	(*Operation)(nil),        // 19: Operation
 }
 var file_kvstore_proto_depIdxs = []int32{
-	8,  // 0: BatchPutRequest.pairs:type_name -> KeyValue
-	9,  // 1: Record.vals:type_name -> Value
-	10, // 2: ScanResponse.records:type_name -> Record
-	14, // 3: StatusResponse.me:type_name -> Node
-	14, // 4: StatusResponse.leader:type_name -> Node
-	14, // 5: StatusResponse.follower:type_name -> Node
-	0,  // 6: KVStore.Put:input_type -> PutRequest
-	2,  // 7: KVStore.Get:input_type -> GetRequest
-	4,  // 8: KVStore.Delete:input_type -> DeleteRequest
-	6,  // 9: KVStore.BatchPut:input_type -> BatchPutRequest
-	11, // 10: KVStore.Scan:input_type -> ScanRequest
-	13, // 11: KVStore.Status:input_type -> StatusRequest
-	16, // 12: KVStore.Join:input_type -> JoinRequest
-	1,  // 13: KVStore.Put:output_type -> PutResponse
-	3,  // 14: KVStore.Get:output_type -> GetResponse
-	5,  // 15: KVStore.Delete:output_type -> DeleteResponse
-	7,  // 16: KVStore.BatchPut:output_type -> BatchPutResponse
-	12, // 17: KVStore.Scan:output_type -> ScanResponse
-	15, // 18: KVStore.Status:output_type -> StatusResponse
-	17, // 19: KVStore.Join:output_type -> JoinResponse
-	13, // [13:20] is the sub-list for method output_type
-	6,  // [6:13] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	9,  // 0: BatchPutRequest.pairs:type_name -> KeyValue
+	10, // 1: Record.vals:type_name -> Value
+	11, // 2: ScanResponse.records:type_name -> Record
+	15, // 3: StatusResponse.me:type_name -> Node
+	15, // 4: StatusResponse.leader:type_name -> Node
+	15, // 5: StatusResponse.follower:type_name -> Node
+	0,  // 6: Operation.type:type_name -> OperationType
+	1,  // 7: KVStore.Put:input_type -> PutRequest
+	3,  // 8: KVStore.Get:input_type -> GetRequest
+	5,  // 9: KVStore.Delete:input_type -> DeleteRequest
+	7,  // 10: KVStore.BatchPut:input_type -> BatchPutRequest
+	12, // 11: KVStore.Scan:input_type -> ScanRequest
+	14, // 12: KVStore.Status:input_type -> StatusRequest
+	17, // 13: KVStore.Join:input_type -> JoinRequest
+	2,  // 14: KVStore.Put:output_type -> PutResponse
+	4,  // 15: KVStore.Get:output_type -> GetResponse
+	6,  // 16: KVStore.Delete:output_type -> DeleteResponse
+	8,  // 17: KVStore.BatchPut:output_type -> BatchPutResponse
+	13, // 18: KVStore.Scan:output_type -> ScanResponse
+	16, // 19: KVStore.Status:output_type -> StatusResponse
+	18, // 20: KVStore.Join:output_type -> JoinResponse
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_kvstore_proto_init() }
@@ -1150,13 +1288,14 @@ func file_kvstore_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kvstore_proto_rawDesc), len(file_kvstore_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   18,
+			NumEnums:      1,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_kvstore_proto_goTypes,
 		DependencyIndexes: file_kvstore_proto_depIdxs,
+		EnumInfos:         file_kvstore_proto_enumTypes,
 		MessageInfos:      file_kvstore_proto_msgTypes,
 	}.Build()
 	File_kvstore_proto = out.File

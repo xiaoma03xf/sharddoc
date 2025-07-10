@@ -8,7 +8,7 @@ import (
 	"slices"
 
 	"github.com/xiaoma03xf/sharddoc/kv"
-	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"github.com/xiaoma03xf/sharddoc/raft/raftpb"
 )
 
 const (
@@ -30,7 +30,7 @@ const (
 )
 
 // add or remove secondary index keys
-func indexOp(client pb.KVStoreClient, tdef *kv.TableDef, op int, rec kv.Record) error {
+func indexOp(client raftpb.KVStoreClient, tdef *kv.TableDef, op int, rec kv.Record) error {
 	for i := 1; i < len(tdef.Indexes); i++ {
 		// the indexed key
 		values, err := kv.GetValues(tdef, rec, tdef.Indexes[i])
@@ -38,14 +38,17 @@ func indexOp(client pb.KVStoreClient, tdef *kv.TableDef, op int, rec kv.Record) 
 		key := kv.EncodeKey(nil, tdef.Prefixes[i], values)
 		switch op {
 		case INDEX_ADD:
-			req, err := client.Put(context.Background(), &pb.PutRequest{Key: key, Value: nil})
+			req, err := client.Put(context.Background(), &raftpb.PutRequest{Key: key, Value: nil})
 			if err != nil {
 				return err
 			}
 			assert(req.Added) // internal consistency
 		case INDEX_DEL:
-			req, err := client.Delete(context.Background(), &pb.DeleteRequest{Key: key})
-			assert(err == nil)  // should not run into the length limit
+			req, err := client.Delete(context.Background(), &raftpb.DeleteRequest{Key: key})
+			if err != nil {
+				return err
+			}
+			//assert(err == nil)  // should not run into the length limit
 			assert(req.Success) // internal consistency
 		default:
 			panic("unreachable")
@@ -131,9 +134,13 @@ func (db *DBServer) dbUpdate(tdef *kv.TableDef, dbreq *DBUpdateReq) (bool, error
 	if err != nil {
 		return false, err
 	}
-	req, err := client.Put(context.Background(), &pb.PutRequest{Key: key, Value: val, Mode: int32(dbreq.Mode)})
+	fmt.Printf("Send Key:%v, Val:%v, Mode:%v\n", key, val, dbreq.Mode)
+	req, err := client.Put(context.Background(), &raftpb.PutRequest{Key: key, Value: val, Mode: int32(dbreq.Mode)})
 	if err != nil {
 		return false, err
+	}
+	if !req.Success {
+		return false, fmt.Errorf("grpc put request err:%v", err)
 	}
 	dbreq.Updated, dbreq.Added = req.Updated, req.Added
 
@@ -144,7 +151,10 @@ func (db *DBServer) dbUpdate(tdef *kv.TableDef, dbreq *DBUpdateReq) (bool, error
 		oldRec := kv.Record{cols, values}
 		// delete the indexed keys
 		err := indexOp(client, tdef, INDEX_DEL, oldRec)
-		assert(err == nil) // should not run into the length limit
+		if err != nil {
+			return false, err
+		}
+		//assert(err == nil) // should not run into the length limit
 	}
 	if req.Updated {
 		// add the new indexed keys
@@ -167,25 +177,29 @@ func (db *DBServer) Set(table string, dbreq *DBUpdateReq) (bool, error) {
 	return db.dbUpdate(tdef, dbreq)
 }
 
-// use this
+// 仅当不存在时插入
 func (db *DBServer) Insert(table string, rec kv.Record) (bool, error) {
 	return db.Set(table, &DBUpdateReq{Record: rec, Mode: kv.MODE_INSERT_ONLY})
 }
+
+// 仅当存在时更新
 func (db *DBServer) Update(table string, rec kv.Record) (bool, error) {
 	return db.Set(table, &DBUpdateReq{Record: rec, Mode: kv.MODE_UPDATE_ONLY})
 }
+
+// 有就更新，没有就插入
 func (db *DBServer) Upsert(table string, rec kv.Record) (bool, error) {
 	return db.Set(table, &DBUpdateReq{Record: rec, Mode: kv.MODE_UPSERT})
 }
 
 // delete a record by its primary key
-func (db *DBServer) dbDelete(client pb.KVStoreClient, tdef *kv.TableDef, rec kv.Record) (bool, error) {
+func (db *DBServer) dbDelete(client raftpb.KVStoreClient, tdef *kv.TableDef, rec kv.Record) (bool, error) {
 	values, err := kv.GetValues(tdef, rec, tdef.Indexes[0])
 	if err != nil {
 		return false, err
 	}
 	// delete the row
-	req, err := client.Delete(context.Background(), &pb.DeleteRequest{
+	req, err := client.Delete(context.Background(), &raftpb.DeleteRequest{
 		Key: kv.EncodeKey(nil, tdef.Prefixes[0], values),
 	})
 	if !req.Success || err != nil {
@@ -225,7 +239,7 @@ type Scanner struct {
 	index int // which index?
 }
 
-func (db *DBServer) dbScan(tdef *kv.TableDef, req *Scanner) ([]*pb.Record, error) {
+func (db *DBServer) dbScan(tdef *kv.TableDef, req *Scanner) ([]*raftpb.Record, error) {
 	// 0. sanity checks
 	switch {
 	case req.Cmp1 > 0 && req.Cmp2 < 0:
@@ -265,12 +279,12 @@ func (db *DBServer) dbScan(tdef *kv.TableDef, req *Scanner) ([]*pb.Record, error
 	if err != nil {
 		return nil, err
 	}
-	clientReq, err := client.Scan(context.Background(), &pb.ScanRequest{
+	clientReq, err := client.Scan(context.Background(), &raftpb.ScanRequest{
 		KeyStart: keyStart, KeyEnd: keyEnd, Cmp1: int64(req.Cmp1), Cmp2: int64(req.Cmp2), Table: tdefBytes, Index: int64(req.index),
 	})
 	return clientReq.Records, err
 }
-func (db *DBServer) Scan(tablename string, req *Scanner) ([]*pb.Record, error) {
+func (db *DBServer) Scan(tablename string, req *Scanner) ([]*raftpb.Record, error) {
 	tdef, err := db.getTableDef(tablename)
 	if err != nil {
 		return nil, fmt.Errorf("occur error:%v", err)

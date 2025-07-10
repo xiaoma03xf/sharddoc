@@ -17,9 +17,8 @@ import (
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"github.com/xiaoma03xf/sharddoc/kv"
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
-	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"github.com/xiaoma03xf/sharddoc/raft/raftpb"
 	"github.com/xiaoma03xf/sharddoc/server/etcd"
-
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,11 +31,11 @@ const (
 	defaultRaftTimeout  = 10 * time.Second
 )
 
-var _ pb.KVStoreServer = &Store{}
+var _ raftpb.KVStoreServer = &Store{}
 
 type Store struct {
 	// grpc api
-	pb.UnimplementedKVStoreServer
+	raftpb.UnimplementedKVStoreServer
 	mu sync.Mutex
 	kv *kv.KV
 
@@ -130,7 +129,7 @@ func (s *Store) grpcListenAndServe(grpcServeaddr string, grpcsignal chan<- struc
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(raftLeaderInterceptor(s)),
 	)
-	pb.RegisterKVStoreServer(grpcServer, s)
+	raftpb.RegisterKVStoreServer(grpcServer, s)
 	if err := grpcServer.Serve(listen); err != nil {
 		panic(err)
 	}
@@ -258,7 +257,7 @@ func BootstrapCluster(cfgPath string, nodeID string) {
 		if err != nil {
 			panic(err)
 		}
-		resp, err := client.Join(context.Background(), &pb.JoinRequest{
+		resp, err := client.Join(context.Background(), &raftpb.JoinRequest{
 			NodeId:  nodeCfg.NodeID,
 			Address: nodeCfg.RaftAddr,
 		})
@@ -312,10 +311,10 @@ func resolvePath(baseDir, p string) string {
 	return filepath.Join(baseDir, p)
 }
 
-func BuildGrpcConn(addr string) (pb.KVStoreClient, *grpc.ClientConn, error) {
+func BuildGrpcConn(addr string) (raftpb.KVStoreClient, *grpc.ClientConn, error) {
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, fmt.Errorf("faild to connect to grpc server:%v", err)
 	}
-	return pb.NewKVStoreClient(conn), conn, nil
+	return raftpb.NewKVStoreClient(conn), conn, nil
 }

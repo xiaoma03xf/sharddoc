@@ -75,16 +75,16 @@ func (sr *ServiceRegistry) Register(isLeader func() bool, onDeregister func()) e
 }
 
 func (sr *ServiceRegistry) watchKeepAlive(isLeader func() bool, onDeregister func()) {
-	for ka := range sr.keepAlive {
+	for range sr.keepAlive {
 		if !isLeader() {
 			log.Println("检测到非 Leader，注销服务")
-			_ = sr.Deregister()
+			if err := sr.Deregister(); err != nil {
+				log.Printf("注销服务失败: %v", err)
+			}
 			onDeregister()
 			break
 		}
-		if ka != nil {
-			log.Printf("ClusterID:%v, ServiceAddr:%v, Keepalive Successfully!, TTL: %d", sr.clusterID, sr.serviceAddr, ka.TTL)
-		}
+		// 不打印续约成功日志，默默消费 channel 数据
 	}
 	log.Println("续约channel已关闭")
 }

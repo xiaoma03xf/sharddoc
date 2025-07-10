@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/xiaoma03xf/sharddoc/discarded/storage"
 	"github.com/xiaoma03xf/sharddoc/lib/utils"
-	"github.com/xiaoma03xf/sharddoc/storage"
 )
 
 func TestClientBasic(t *testing.T) {

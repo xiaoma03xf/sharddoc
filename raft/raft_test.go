@@ -12,12 +12,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/xiaoma03xf/sharddoc/kv"
-	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"github.com/xiaoma03xf/sharddoc/raft/raftpb"
 	"github.com/xiaoma03xf/sharddoc/server/etcd"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestStoreInterface(t *testing.T) {
-	var _ pb.KVStoreServer = &Store{}
+	var _ raftpb.KVStoreServer = &Store{}
 	kv2 := kv.KV{Path: "./test.db"}
 	if err := kv2.Open(); err != nil {
 		panic(err)
@@ -93,7 +94,7 @@ func TestBootStrap(t *testing.T) {
 		for i := start; i < end; i++ {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			// Put operation
-			putResp, err := localClient.Put(ctx, &pb.PutRequest{
+			putResp, err := localClient.Put(ctx, &raftpb.PutRequest{
 				Key:   []byte(kvPairs[i].key),
 				Value: []byte(kvPairs[i].value),
 			})
@@ -105,7 +106,7 @@ func TestBootStrap(t *testing.T) {
 			}
 
 			// Get operation
-			getResp, err := localClient.Get(ctx, &pb.GetRequest{
+			getResp, err := localClient.Get(ctx, &raftpb.GetRequest{
 				Key: []byte(kvPairs[i].key),
 			})
 			if err != nil {
@@ -166,9 +167,9 @@ func TestBatchInsert(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Generate key-value pairs
-	kvPairs := make([]*pb.KeyValue, 1000)
+	kvPairs := make([]*raftpb.KeyValue, 1000)
 	for i := 0; i < 1000; i++ {
-		kvPairs[i] = &pb.KeyValue{
+		kvPairs[i] = &raftpb.KeyValue{
 			Key:   []byte(fmt.Sprintf("key_%d", i)),
 			Value: []byte(fmt.Sprintf("val_%d", i)),
 		}
@@ -178,7 +179,7 @@ func TestBatchInsert(t *testing.T) {
 	Assert(err == nil)
 	defer localConn.Close()
 
-	resp, err := localClient.BatchPut(context.Background(), &pb.BatchPutRequest{Pairs: kvPairs})
+	resp, err := localClient.BatchPut(context.Background(), &raftpb.BatchPutRequest{Pairs: kvPairs})
 	if err != nil {
 		t.Error(err)
 	}
@@ -187,7 +188,7 @@ func TestBatchInsert(t *testing.T) {
 	}
 
 	for _, pair := range kvPairs {
-		resp, err := localClient.Get(context.Background(), &pb.GetRequest{Key: pair.Key})
+		resp, err := localClient.Get(context.Background(), &raftpb.GetRequest{Key: pair.Key})
 		Assert(err == nil)
 		if string(resp.Value) != string(pair.Value) {
 			t.Errorf("value not expected, want: %v, got: %v", string(pair.Value), string(resp.Value))
@@ -214,7 +215,7 @@ func TestEtcdConf(t *testing.T) {
 	localClient, localConn, err := BuildGrpcConn(leaderAddr)
 	Assert(err == nil)
 	defer localConn.Close()
-	resp, err := localClient.Status(context.Background(), &pb.StatusRequest{})
+	resp, err := localClient.Status(context.Background(), &raftpb.StatusRequest{})
 	if err != nil {
 		t.Error(err)
 	}
@@ -236,4 +237,43 @@ func TestEtcdConf(t *testing.T) {
 	// 获取当前etcd中的leader
 	res := sd.GetServiceByClusterID("cluster1")
 	fmt.Println("当前leader信息", res.Addr)
+}
+
+func TestProtobuf(t *testing.T) {
+	// 构造 PutRequest，基于日志数据
+	req := &raftpb.PutRequest{
+		Key:   []byte{0, 0, 0, 100, 2, 128, 0, 0, 0, 0, 0, 0, 1},                                           // Key: [0 0 0 100 2 128 0 0 0 0 0 0 1]
+		Value: []byte{1, 106, 97, 99, 107, 0, 2, 128, 0, 0, 0, 0, 0, 0, 23, 2, 128, 0, 0, 0, 0, 0, 0, 175}, // Value: [1 106 97 99 107 0 2 128 0 0 0 0 0 0 23 2 128 0 0 0 0 0 0 175]
+		Mode:  1,                                                                                           // Mode: 1
+	}
+
+	// 序列化
+	data, err := proto.Marshal(req)
+	if err != nil {
+		log.Fatalf("Failed to marshal PutRequest: %v", err)
+	}
+	fmt.Printf("Serialized data: %x\n", data)
+
+	// 验证序列化数据是否匹配日志中的 reqData
+	expectedData := []byte{0x0a, 0x0d, 0x00, 0x00, 0x00, 0x64, 0x02, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x12, 0x18, 0x01, 0x6a, 0x61, 0x63, 0x6b, 0x00, 0x02, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x02, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xaf, 0x18, 0x01}
+	fmt.Printf("Expected data: %x\n", expectedData)
+	if string(data) != string(expectedData) {
+		log.Fatalf("Serialized data does not match expected: got %x, want %x", data, expectedData)
+	}
+
+	// 反序列化
+	var putreq raftpb.PutRequest
+	err = proto.Unmarshal(data, &putreq)
+	if err != nil {
+		log.Fatalf("Failed to unmarshal PutRequest: %v", err)
+	}
+	fmt.Printf("Unmarshaled PutRequest: key=%x, value=%x, mode=%d\n", putreq.Key, putreq.Value, putreq.Mode)
+
+	// 验证反序列化结果
+	if string(putreq.Key) != string(req.Key) || string(putreq.Value) != string(req.Value) || putreq.Mode != req.Mode {
+		log.Fatalf("Unmarshaled data does not match: got key=%x, value=%x, mode=%d; want key=%x, value=%x, mode=%d",
+			putreq.Key, putreq.Value, putreq.Mode, req.Key, req.Value, req.Mode)
+	}
+
+	fmt.Println("Serialization and deserialization successful!")
 }

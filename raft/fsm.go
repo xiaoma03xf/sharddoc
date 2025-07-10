@@ -7,46 +7,52 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/xiaoma03xf/sharddoc/kv"
-	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"github.com/xiaoma03xf/sharddoc/raft/raftpb"
 	"google.golang.org/protobuf/proto"
 )
 
 func (f *Store) Apply(l *raft.Log) interface{} {
-	var op pb.Operation
+	if len(l.Data) == 0 {
+		f.logger.Println("raft log data is empty")
+		return &raftpb.PutResponse{Success: false}
+	}
+	var op raftpb.Operation
 	err := proto.Unmarshal(l.Data, &op)
 	if err != nil {
 		panic(err)
 	}
 	switch op.Type {
-	case pb.OperationType_PUT:
+	case raftpb.OperationType_PUT:
 		return f.applyPut(op.Data)
-	case pb.OperationType_BATCHPUT:
+	case raftpb.OperationType_BATCHPUT:
 		return f.applyBatchPut(op.Data)
-	case pb.OperationType_DELETE:
+	case raftpb.OperationType_DELETE:
 		return f.applyDelete(op.Data)
 	}
 	return nil
 }
 
-func (f *Store) applyPut(data []byte) *pb.PutResponse {
-	var putreq pb.PutRequest
+func (f *Store) applyPut(data []byte) *raftpb.PutResponse {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// f.logger.Printf("fsm reqData: %x", data)
+	f.logger.Printf("FSM RECEIVED: len=%d, data=%v\n", len(data), data)
+
+	var putreq raftpb.PutRequest
 	if err := proto.Unmarshal(data, &putreq); err != nil {
 		f.logger.Println("unmarshal putrequest data err:", err)
-		return &pb.PutResponse{Success: false}
+		return &raftpb.PutResponse{Success: false}
 	}
-
-	f.mu.Lock()
 	tx := &kv.KVTX{}
 	f.kv.Begin(tx)
-
 	req := &kv.UpdateReq{Key: putreq.Key, Val: putreq.Value}
 	_, err := tx.Update(req)
 	Assert(err == nil)
 	err = f.kv.Commit(tx)
 	Assert(err == nil)
-	f.mu.Unlock()
 
-	return &pb.PutResponse{
+	return &raftpb.PutResponse{
 		Success: true,
 		Updated: req.Updated,
 		Added:   req.Added,
@@ -54,11 +60,11 @@ func (f *Store) applyPut(data []byte) *pb.PutResponse {
 	}
 }
 
-func (f *Store) applyBatchPut(data []byte) *pb.BatchPutResponse {
-	var putreq pb.BatchPutRequest
+func (f *Store) applyBatchPut(data []byte) *raftpb.BatchPutResponse {
+	var putreq raftpb.BatchPutRequest
 	if err := proto.Unmarshal(data, &putreq); err != nil {
 		f.logger.Println("unmarshal putrequest data err:", err)
-		return &pb.BatchPutResponse{Success: false}
+		return &raftpb.BatchPutResponse{Success: false}
 	}
 
 	f.mu.Lock()
@@ -72,13 +78,13 @@ func (f *Store) applyBatchPut(data []byte) *pb.BatchPutResponse {
 	Assert(err == nil)
 	f.mu.Unlock()
 
-	return &pb.BatchPutResponse{Success: true}
+	return &raftpb.BatchPutResponse{Success: true}
 }
-func (f *Store) applyDelete(data []byte) *pb.DeleteResponse {
-	var delreq pb.DeleteRequest
+func (f *Store) applyDelete(data []byte) *raftpb.DeleteResponse {
+	var delreq raftpb.DeleteRequest
 	if err := proto.Unmarshal(data, &delreq); err != nil {
 		f.logger.Println("unmarshal deleteRequest data err:", err)
-		return &pb.DeleteResponse{Success: false}
+		return &raftpb.DeleteResponse{Success: false}
 	}
 
 	f.mu.Lock()
@@ -92,7 +98,7 @@ func (f *Store) applyDelete(data []byte) *pb.DeleteResponse {
 	Assert(err == nil)
 	f.mu.Unlock()
 
-	return &pb.DeleteResponse{Success: true, Old: delReq.Old}
+	return &raftpb.DeleteResponse{Success: true, Old: delReq.Old}
 }
 
 func (f *Store) Snapshot() (raft.FSMSnapshot, error) {

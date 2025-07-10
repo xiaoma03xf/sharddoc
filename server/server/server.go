@@ -9,7 +9,7 @@ import (
 
 	"github.com/xiaoma03xf/sharddoc/lib/hash"
 	"github.com/xiaoma03xf/sharddoc/raft"
-	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"github.com/xiaoma03xf/sharddoc/raft/raftpb"
 	"github.com/xiaoma03xf/sharddoc/server/etcd"
 	"google.golang.org/grpc"
 )
@@ -42,7 +42,7 @@ type DBServer struct {
 type LeaderManager struct {
 	mu          sync.RWMutex
 	GrpcAddress string
-	Client      pb.KVStoreClient
+	Client      raftpb.KVStoreClient
 	Conn        *grpc.ClientConn
 	LastActive  time.Time
 }
@@ -83,10 +83,9 @@ func NewDB(endpoints, clusterAddrs []string) (*DBServer, error) {
 	return db, nil
 }
 
-func (db *DBServer) getLeader(clusterID string) (pb.KVStoreClient, *grpc.ClientConn, error) {
+func (db *DBServer) getLeader(clusterID string) (raftpb.KVStoreClient, *grpc.ClientConn, error) {
 	client, conn, err := db.getLeaderFromCache(clusterID)
 	if err == nil {
-		log.Printf("[集群 %s] 缓存获取服务成功！", clusterID)
 		return client, conn, nil
 	}
 	// leader cache 不可用或第一次初始化
@@ -169,11 +168,9 @@ func (db *DBServer) StartLeaderHealthCheck(clusterID string, interval time.Durat
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			_, err := leader.Client.Status(ctx, &pb.StatusRequest{})
+			_, err := leader.Client.Status(ctx, &raftpb.StatusRequest{})
 			cancel()
 			if err == nil {
-				log.Printf("[心跳检测] %s ping 成功!", clusterID)
-
 				leader.mu.Lock()
 				leader.LastActive = time.Now()
 				leader.mu.Unlock()
@@ -184,7 +181,7 @@ func (db *DBServer) StartLeaderHealthCheck(clusterID string, interval time.Durat
 	}
 }
 
-func (db *DBServer) getLeaderFromCache(clusterID string) (pb.KVStoreClient, *grpc.ClientConn, error) {
+func (db *DBServer) getLeaderFromCache(clusterID string) (raftpb.KVStoreClient, *grpc.ClientConn, error) {
 	// 检查缓存是否失效
 	db.mu.Lock()
 	lm := db.Leaders[clusterID]
@@ -235,7 +232,7 @@ func (db *DBServer) Close() {
 	}
 }
 
-func (db *DBServer) getGrpcClientForPrimaryKey(primaryKey []string) (pb.KVStoreClient, *grpc.ClientConn, error) {
+func (db *DBServer) getGrpcClientForPrimaryKey(primaryKey []string) (raftpb.KVStoreClient, *grpc.ClientConn, error) {
 	key := ""
 	for _, k := range primaryKey {
 		key += k

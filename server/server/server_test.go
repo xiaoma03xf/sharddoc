@@ -12,8 +12,10 @@ import (
 
 	"github.com/xiaoma03xf/sharddoc/kv"
 	"github.com/xiaoma03xf/sharddoc/raft"
-	"github.com/xiaoma03xf/sharddoc/raft/pb"
+
+	"github.com/xiaoma03xf/sharddoc/raft/raftpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestEtcdBasic(t *testing.T) {
@@ -39,7 +41,7 @@ func TestEtcdBasic(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		resp, err := client.Status(context.Background(), &pb.StatusRequest{})
+		resp, err := client.Status(context.Background(), &raftpb.StatusRequest{})
 		if err != nil {
 			t.Error(err)
 		}
@@ -53,7 +55,7 @@ func TestEtcdBasic(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	resp, err := client.Status(context.Background(), &pb.StatusRequest{})
+	resp, err := client.Status(context.Background(), &raftpb.StatusRequest{})
 	if err != nil {
 		t.Error(err)
 	}
@@ -151,7 +153,7 @@ func ClearEtcd(endpoints []string) {
 		panic(err)
 	}
 }
-func DBServerPrintQuery(recs []*pb.Record) {
+func DBServerPrintQuery(recs []*raftpb.Record) {
 	// 打印表头
 	fmt.Printf("%-10s %-20s %-10s %-10s\n", "ID", "Name", "Age", "Height")
 	fmt.Println("---------------------------------------------------------")
@@ -362,6 +364,414 @@ func TestEtcdKey(t *testing.T) {
 	}
 }
 
+func TestSqlExec(t *testing.T) {
+	db, err := NewDB([]string{"118.89.66.104:2379"}, []string{"cluster1", "cluster2", "cluster3"})
+	if err != nil {
+		t.Error(err)
+	}
+	time.Sleep(5 * time.Second)
+
+	{
+		creatTable := `
+	CREATE TABLE users (
+	    id INT64,
+	    name BYTES,
+	    age INT64,
+		height INT64,
+		PRIMARY KEY (id),
+		INDEX (name),
+	    INDEX (age, height)
+	);`
+		b, err := db.ExecSQL(creatTable)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		fmt.Println(string(b))
+	}
+
+	{
+		// insert data
+		filePath := "./test_data.json"
+		records, err := ReadTestDataFromFile(filePath)
+		if err != nil {
+			fmt.Println("Error reading data:", err)
+			return
+		}
+		for _, rec_data := range records {
+			cols := []string{"id", "name", "age", "height"}
+			args := []interface{}{rec_data.ID, rec_data.Name, rec_data.Age, rec_data.Height}
+			sql := BuildInsertSQL("users", cols, args)
+			b, err := db.ExecSQL(sql)
+			assert(err == nil && string(b) == INSERT_OK)
+		}
+	}
+
+	// SELECT name, id FROM tbl_test WHERE age >= 25;
+	{
+		sql := `
+	SELECT name, id FROM users WHERE age >= 25;
+	`
+		b, err := db.ExecSQL(sql)
+		if err != nil {
+			t.Error(err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		var ageindex int
+		for i, v := range resp.Records[0].Cols {
+			if v == "age" {
+				ageindex = i
+			}
+		}
+		// check
+		fmt.Println(sql)
+		DBServerPrintQuery(resp.Records)
+		for _, rec := range resp.Records {
+			assert(rec.Vals[ageindex].I64 >= 25)
+		}
+	}
+
+	// SELECT name, id FROM tbl_test WHERE age <= 25;
+	{
+		sql := `
+	SELECT name, id FROM users WHERE age <= 25;
+	`
+		b, err := db.ExecSQL(sql)
+		if err != nil {
+			t.Error(err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		var ageindex int
+		for i, v := range resp.Records[0].Cols {
+			if v == "age" {
+				ageindex = i
+			}
+		}
+		fmt.Println(sql)
+		DBServerPrintQuery(resp.Records)
+		for _, rec := range resp.Records {
+			assert(rec.Vals[ageindex].I64 <= 25)
+		}
+	}
+
+	{
+		sql := `
+	SELECT name, id FROM users WHERE age BETWEEN 18 AND 25;
+	`
+		b, err := db.ExecSQL(sql)
+		if err != nil {
+			t.Error(err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		var ageindex int
+		for i, v := range resp.Records[0].Cols {
+			if v == "age" {
+				ageindex = i
+			}
+		}
+		fmt.Println(sql)
+		DBServerPrintQuery(resp.Records)
+		for _, rec := range resp.Records {
+			assert(rec.Vals[ageindex].I64 >= 18 && rec.Vals[ageindex].I64 <= 25)
+		}
+	}
+
+	{
+		sql := `
+	SELECT name, id FROM users WHERE age > 18 AND age < 25;
+	`
+		b, err := db.ExecSQL(sql)
+		if err != nil {
+			t.Error(err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		var ageindex int
+		for i, v := range resp.Records[0].Cols {
+			if v == "age" {
+				ageindex = i
+			}
+		}
+		fmt.Println(sql)
+		DBServerPrintQuery(resp.Records)
+		for _, rec := range resp.Records {
+			assert(rec.Vals[ageindex].I64 > 18 && rec.Vals[ageindex].I64 < 25)
+		}
+	}
+
+	{
+		sql := `
+	SELECT name, id FROM users WHERE age = 18 AND height < 175;
+	`
+		b, err := db.ExecSQL(sql)
+		if err != nil {
+			t.Error(err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		var ageindex, heightindex int
+		for i, v := range resp.Records[0].Cols {
+			if v == "age" {
+				ageindex = i
+			}
+			if v == "height" {
+				heightindex = i
+			}
+		}
+		fmt.Println(sql)
+		DBServerPrintQuery(resp.Records)
+		for _, rec := range resp.Records {
+			assert(rec.Vals[ageindex].I64 == 18 && rec.Vals[heightindex].I64 < 175)
+		}
+	}
+
+	{
+		sql := `
+	SELECT name, id FROM users WHERE age = 18 AND height >= 175;
+	`
+		b, err := db.ExecSQL(sql)
+		if err != nil {
+			t.Error(err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		var ageindex, heightindex int
+		for i, v := range resp.Records[0].Cols {
+			if v == "age" {
+				ageindex = i
+			}
+			if v == "height" {
+				heightindex = i
+			}
+		}
+		fmt.Println(sql)
+		DBServerPrintQuery(resp.Records)
+		for _, rec := range resp.Records {
+			assert(rec.Vals[ageindex].I64 == 18 && rec.Vals[heightindex].I64 >= 175)
+		}
+	}
+
+	{
+		sql := `
+	SELECT name, id FROM users WHERE age = 18 AND height BETWEEN 170 AND 175;
+	`
+		b, err := db.ExecSQL(sql)
+		if err != nil {
+			t.Error(err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		var ageindex, heightindex int
+		for i, v := range resp.Records[0].Cols {
+			if v == "age" {
+				ageindex = i
+			}
+			if v == "height" {
+				heightindex = i
+			}
+		}
+		fmt.Println(sql)
+		DBServerPrintQuery(resp.Records)
+		for _, rec := range resp.Records {
+			assert(rec.Vals[ageindex].I64 == 18 && rec.Vals[heightindex].I64 <= 175 &&
+				rec.Vals[heightindex].I64 >= 170)
+		}
+	}
+
+	db.Close()
+	ClearEtcd([]string{"118.89.66.104:2379"})
+}
 func TestClearEtcd(t *testing.T) {
 	ClearEtcd([]string{"118.89.66.104:2379"})
+}
+
+func TestBasicCRUD(t *testing.T) {
+	db, err := NewDB([]string{"118.89.66.104:2379"}, []string{"cluster1"})
+	if err != nil {
+		t.Error(err)
+	}
+	time.Sleep(5 * time.Second)
+
+	{
+		creatTable := `
+	CREATE TABLE users (
+	    id INT64,
+	    name BYTES,
+	    age INT64,
+		height INT64,
+		PRIMARY KEY (id),
+		INDEX (name),
+	    INDEX (age, height)
+	);`
+		b, err := db.ExecSQL(creatTable)
+		if err != nil {
+			t.Error(err)
+		}
+		fmt.Println(string(b))
+	}
+
+	{
+		// insert data
+		filePath := "./test_data.json"
+		records, err := ReadTestDataFromFile(filePath)
+		if err != nil {
+			fmt.Println("Error reading data:", err)
+			return
+		}
+		for _, rec_data := range records {
+			cols := []string{"id", "name", "age", "height"}
+			args := []interface{}{rec_data.ID, rec_data.Name, rec_data.Age, rec_data.Height}
+			sql := BuildInsertSQL("users", cols, args)
+			b, err := db.ExecSQL(sql)
+			assert(err == nil && string(b) == INSERT_OK)
+		}
+	}
+
+	{
+		// 测试简单的更新
+		updatasql := "UPDATE users SET age=10086 WHERE id>295"
+		_, err := db.ExecSQL(updatasql)
+		if err != nil {
+			t.Error(err)
+		}
+
+		selectsql2 := "SELECT id, name, age FROM users WHERE id > 295"
+		b, err := db.ExecSQL(selectsql2)
+		if err != nil {
+			t.Errorf("select data err:%v", err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		DBServerPrintQuery(resp.Records)
+	}
+
+	{
+		sql := `
+	SELECT name, id FROM users WHERE age = 18 AND height > 175;
+	`
+		b, err := db.ExecSQL(sql)
+		if err != nil {
+			t.Error(err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		var ageindex, heightindex int
+		for i, v := range resp.Records[0].Cols {
+			if v == "age" {
+				ageindex = i
+			}
+			if v == "height" {
+				heightindex = i
+			}
+		}
+		fmt.Println(sql)
+		DBServerPrintQuery(resp.Records)
+		for _, rec := range resp.Records {
+			assert(rec.Vals[ageindex].I64 == 18 && rec.Vals[heightindex].I64 > 175)
+		}
+	}
+
+	{
+		// 测试简单的删除
+		delsql := "DELETE FROM users WHERE age=18 AND height > 180"
+		b, err := db.ExecSQL(delsql)
+		if err != nil {
+			t.Error(err)
+		}
+		assert(string(b) == DELETE_OK)
+
+		selectsql2 := `
+	SELECT name, id FROM users WHERE age = 18 AND height > 175;
+	`
+		b, err = db.ExecSQL(selectsql2)
+		if err != nil {
+			t.Errorf("select data err:%v", err)
+		}
+		var resp raftpb.ScanResponse
+		err = proto.Unmarshal(b, &resp)
+		if err != nil {
+			t.Errorf("failed to unmarshal ScanResponse: %v", err)
+		}
+		DBServerPrintQuery(resp.Records)
+	}
+	db.Close()
+	ClearEtcd([]string{"118.89.66.104:2379"})
+}
+
+func TestServerBasic(t *testing.T) {
+	db, err := NewDB([]string{"118.89.66.104:2379"}, []string{"cluster1"})
+	if err != nil {
+		t.Error(err)
+	}
+	time.Sleep(5 * time.Second)
+
+	{
+		creatTable := `
+	CREATE TABLE users (
+	    id INT64,
+	    name BYTES,
+	    age INT64,
+		height INT64,
+		PRIMARY KEY (id),
+		INDEX (name),
+	    INDEX (age, height)
+	);`
+		b, err := db.ExecSQL(creatTable)
+		if err != nil {
+			t.Error(err)
+		}
+		fmt.Println(string(b))
+	}
+	record := func(id int64, name string, age int64, height int64) kv.Record {
+		rec := kv.Record{}
+		rec.AddInt64("id", id).AddStr("name", []byte(name))
+		rec.AddInt64("age", age).AddInt64("height", height)
+		return rec
+	}
+
+	{
+		rec := record(1, "jack", 23, 170)
+		_, err := db.Insert("users", rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	{
+		rec := record(1, "jack", 23, 175)
+		_, err := db.Update("users", rec)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }

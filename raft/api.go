@@ -10,14 +10,14 @@ import (
 
 	"github.com/hashicorp/raft"
 	"github.com/xiaoma03xf/sharddoc/kv"
-	"github.com/xiaoma03xf/sharddoc/raft/pb"
+	"github.com/xiaoma03xf/sharddoc/raft/raftpb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
 // Join raft cluster
-func (s *Store) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse, error) {
+func (s *Store) Join(ctx context.Context, req *raftpb.JoinRequest) (*raftpb.JoinResponse, error) {
 	// TODO 在一个raft组中，follower向leader发送grpc消息会报错
 	//[ERROR] raft-net: failed to decode incoming command: error="unknown rpc type 80"
 	if s.raft.State() != raft.Leader {
@@ -57,7 +57,7 @@ func (s *Store) Join(ctx context.Context, req *pb.JoinRequest) (*pb.JoinResponse
 		return nil, f.Error()
 	}
 	s.logger.Printf("node %s at %s joined successfully", req.NodeId, req.Address)
-	return &pb.JoinResponse{Success: true}, nil
+	return &raftpb.JoinResponse{Success: true}, nil
 }
 
 func (s *Store) getGrpcAddrFromRaftAddress(raftaddress string) string {
@@ -72,44 +72,66 @@ func (s *Store) getGrpcAddrFromRaftAddress(raftaddress string) string {
 
 // Status return current raft cluster Status (me, leader, follower)
 // 返回的是raft内部信息，而不是暴露在外的 grpc 信息
-func (s *Store) Status(ctx context.Context, req *pb.StatusRequest) (*pb.StatusResponse, error) {
+func (s *Store) Status(ctx context.Context, req *raftpb.StatusRequest) (*raftpb.StatusResponse, error) {
 	leaderServerAddr, leaderID := s.raft.LeaderWithID()
-	leader := &pb.Node{
+	leader := &raftpb.Node{
 		Id:          string(leaderID),
 		Address:     string(leaderServerAddr),
 		Grpcaddress: s.getGrpcAddrFromRaftAddress(string(leaderServerAddr)),
 	}
 
 	servers := s.raft.GetConfiguration().Configuration().Servers
-	followers := []*pb.Node{}
-	me := &pb.Node{
+	followers := []*raftpb.Node{}
+	me := &raftpb.Node{
 		Id:          s.nodeID,
 		Address:     s.raftAddr,
 		Grpcaddress: s.grpcaddr,
 	}
 	for _, server := range servers {
 		if server.ID != leaderID {
-			followers = append(followers, &pb.Node{
+			followers = append(followers, &raftpb.Node{
 				Id:          string(server.ID),
 				Address:     string(server.Address),
 				Grpcaddress: s.getGrpcAddrFromRaftAddress(string(server.Address)),
 			})
 		}
 	}
-	return &pb.StatusResponse{
+	return &raftpb.StatusResponse{
 		Me:       me,
 		Leader:   leader,
 		Follower: followers,
 	}, nil
 }
 
-func (s *Store) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
-	reqData, err := proto.Marshal(req)
+func deepCopyPutRequest(orig *raftpb.PutRequest) (*raftpb.PutRequest, error) {
+	b, err := proto.Marshal(orig)
+	if err != nil {
+		return nil, err
+	}
+	copy := &raftpb.PutRequest{}
+	if err := proto.Unmarshal(b, copy); err != nil {
+		return nil, err
+	}
+	return copy, nil
+}
+
+func (s *Store) Put(ctx context.Context, req *raftpb.PutRequest) (*raftpb.PutResponse, error) {
+	fmt.Printf("API Received Key:%v, Value:%v, Mode:%v\n", req.Key, req.Value, req.Mode)
+
+	cleanReq, err := deepCopyPutRequest(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deep copy PutRequest: %v", err)
+	}
+	reqData, err := proto.Marshal(cleanReq)
 	if err != nil {
 		return nil, fmt.Errorf("faild to marshal PutRequest: %v", err)
 	}
-	op := &pb.Operation{
-		Type:  pb.OperationType_PUT,
+	// s.logger.Printf("SEND: len=%d, sha256=%x\n", len(reqData), sha256.Sum256(reqData))
+	// s.logger.Printf("SEND: len=%d, data=%v\n", len(reqData), reqData)
+	fmt.Printf("API Received Data:%v\n", reqData)
+
+	op := &raftpb.Operation{
+		Type:  raftpb.OperationType_PUT,
 		Data:  reqData,
 		Term:  s.raft.CurrentTerm(),
 		Index: s.raft.LastIndex(),
@@ -122,19 +144,20 @@ func (s *Store) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, e
 	if err := f.Error(); err != nil {
 		return nil, fmt.Errorf("raft apply error: %v", err)
 	}
-	resp, ok := f.Response().(*pb.PutResponse)
+	resp, ok := f.Response().(*raftpb.PutResponse)
 	if !ok {
+		s.logger.Printf("unexpected response type:%v", f.Response())
 		return nil, fmt.Errorf("unexpected response type")
 	}
 	return resp, nil
 }
-func (s *Store) BatchPut(ctx context.Context, req *pb.BatchPutRequest) (*pb.BatchPutResponse, error) {
+func (s *Store) Delete(ctx context.Context, req *raftpb.DeleteRequest) (*raftpb.DeleteResponse, error) {
 	reqData, err := proto.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("faild to marshal PutRequest: %v", err)
 	}
-	op := &pb.Operation{
-		Type:  pb.OperationType_BATCHPUT,
+	op := &raftpb.Operation{
+		Type:  raftpb.OperationType_BATCHPUT,
 		Data:  reqData,
 		Term:  s.raft.CurrentTerm(),
 		Index: s.raft.LastIndex(),
@@ -147,32 +170,7 @@ func (s *Store) BatchPut(ctx context.Context, req *pb.BatchPutRequest) (*pb.Batc
 	if err := f.Error(); err != nil {
 		return nil, fmt.Errorf("raft apply error: %v", err)
 	}
-	resp, ok := f.Response().(*pb.BatchPutResponse)
-	if !ok {
-		return nil, fmt.Errorf("unexpected response type")
-	}
-	return resp, nil
-}
-func (s *Store) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
-	reqData, err := proto.Marshal(req)
-	if err != nil {
-		return nil, fmt.Errorf("faild to marshal PutRequest: %v", err)
-	}
-	op := &pb.Operation{
-		Type:  pb.OperationType_BATCHPUT,
-		Data:  reqData,
-		Term:  s.raft.CurrentTerm(),
-		Index: s.raft.LastIndex(),
-	}
-	opData, err := proto.Marshal(op)
-	if err != nil {
-		return nil, fmt.Errorf("faild to marshal OPData: %v", err)
-	}
-	f := s.raft.Apply(opData, defaultRaftTimeout)
-	if err := f.Error(); err != nil {
-		return nil, fmt.Errorf("raft apply error: %v", err)
-	}
-	resp, ok := f.Response().(*pb.DeleteResponse)
+	resp, ok := f.Response().(*raftpb.DeleteResponse)
 	if !ok {
 		return nil, fmt.Errorf("unexpected response type")
 	}
@@ -180,7 +178,7 @@ func (s *Store) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteRe
 }
 
 // Get, Scan等操作不用等apply结束
-func (s *Store) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+func (s *Store) Get(ctx context.Context, req *raftpb.GetRequest) (*raftpb.GetResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// s.raft.CommitIndex() 集群中已经被大多数节点应用并提交的日志条目的最大索引
@@ -200,7 +198,7 @@ func (s *Store) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, e
 	val, found := tx.Get(req.Key)
 	err := s.kv.Commit(&tx)
 	Assert(err == nil)
-	return &pb.GetResponse{Value: val, Found: found}, nil
+	return &raftpb.GetResponse{Value: val, Found: found}, nil
 }
 
 func nonPrimaryKeyCols(tdef *kv.TableDef) (out []string) {
@@ -211,7 +209,7 @@ func nonPrimaryKeyCols(tdef *kv.TableDef) (out []string) {
 	}
 	return
 }
-func (s *Store) Scan(ctx context.Context, req *pb.ScanRequest) (*pb.ScanResponse, error) {
+func (s *Store) Scan(ctx context.Context, req *raftpb.ScanRequest) (*raftpb.ScanResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -231,7 +229,7 @@ func (s *Store) Scan(ctx context.Context, req *pb.ScanRequest) (*pb.ScanResponse
 	}
 
 	// 遍历迭代器
-	got := []*pb.Record{}
+	got := []*raftpb.Record{}
 	for KVIter.Valid() {
 		rec := &kv.Record{}
 		// decode the index key
@@ -303,25 +301,25 @@ func (s *Store) Scan(ctx context.Context, req *pb.ScanRequest) (*pb.ScanResponse
 			kv.DecodeValues(val, rec.Vals[npk:])
 		}
 
-		got = append(got, kvRecordToPbRecord(*rec))
+		got = append(got, kvRecordToraftpbRecord(*rec))
 		KVIter.Next()
 	}
 
-	return &pb.ScanResponse{
+	return &raftpb.ScanResponse{
 		Records: got,
 	}, nil
 }
 
-func kvRecordToPbRecord(kvRec kv.Record) *pb.Record {
-	pbRec := &pb.Record{
+func kvRecordToraftpbRecord(kvRec kv.Record) *raftpb.Record {
+	pbRec := &raftpb.Record{
 		Cols: make([]string, len(kvRec.Cols)),
-		Vals: make([]*pb.Value, len(kvRec.Vals)),
+		Vals: make([]*raftpb.Value, len(kvRec.Vals)),
 	}
 	// 复制 Cols
 	copy(pbRec.Cols, kvRec.Cols)
 	// 转换 Vals
 	for i, kvVal := range kvRec.Vals {
-		pbRec.Vals[i] = &pb.Value{
+		pbRec.Vals[i] = &raftpb.Value{
 			Type: kvVal.Type,
 			I64:  kvVal.I64,
 			Str:  kvVal.Str,

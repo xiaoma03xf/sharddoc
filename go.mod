@@ -14,7 +14,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3 // indirect
-	github.com/hashicorp/go-hclog v1.6.2 // indirect
 	github.com/hashicorp/go-immutable-radix v1.0.0 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect
@@ -43,6 +42,7 @@ require (
 	github.com/demdxx/gocast v1.2.0
 	github.com/gomodule/redigo v1.9.2
 	github.com/google/uuid v1.6.0
+	github.com/hashicorp/go-hclog v1.6.2
 	github.com/hashicorp/raft v1.7.3
 	github.com/hashicorp/raft-boltdb v0.0.0-20250603080355-5acfa2a95991
 	github.com/stretchr/testify v1.10.0

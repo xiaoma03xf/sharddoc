@@ -4,7 +4,7 @@
 // - protoc             v3.21.5
 // source: kvstore.proto
 
-package pb
+package raftpb
 
 import (
 	context "context"

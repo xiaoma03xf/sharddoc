@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
+	"github.com/xiaoma03xf/sharddoc/discarded/storage"
 	"github.com/xiaoma03xf/sharddoc/lib"
 	"github.com/xiaoma03xf/sharddoc/lib/logger"
-	"github.com/xiaoma03xf/sharddoc/storage"
 )
 
 type snapshot struct {
